@@ -77,30 +77,32 @@ def prepare_popqa():
     
     formatted_data = []
     for item in tqdm(dataset):
-        # Using possible_answers field which contains the list of acceptable answers
+        # Convert possible_answers from string to list
+        answers = []
         if "possible_answers" in item:
-            # Convert from string representation to actual list if needed
-            if isinstance(item["possible_answers"], str):
+            try:
+                # Handle when possible_answers is a string representation of a list
+                import json
+                answers = json.loads(item["possible_answers"].replace("'", '"'))
+            except:
+                # If JSON parsing fails, try eval (safer than direct eval)
                 try:
-                    possible_answers = eval(item["possible_answers"])  # Safely evaluate the string to a list
+                    import ast
+                    answers = ast.literal_eval(item["possible_answers"])
                 except:
-                    possible_answers = [item["possible_answers"]]
-            else:
-                possible_answers = item["possible_answers"]
-                
-            # Take the first answer as primary, keep all as alternatives
-            formatted_data.append({
-                "question": item["question"],
-                "answer": possible_answers[0] if possible_answers else "",
-                "alternative_answers": possible_answers
-            })
-        else:
-            # Fallback if structure is different
-            formatted_data.append({
-                "question": item["question"],
-                "answer": item.get("obj", ""),  # Use 'obj' field as fallback
-                "alternative_answers": []
-            })
+                    # Fall back to just using the string
+                    answers = [item["possible_answers"]]
+        
+        # If the question asks for occupation, we can also check the 'obj' field
+        if 'occupation' in item['question'].lower() and 'obj' in item:
+            if not answers:  # Only use obj if answers list is empty
+                answers = [item['obj']]
+        
+        formatted_data.append({
+            "question": item["question"],
+            "answer": answers[0] if answers else "",
+            "alternative_answers": answers
+        })
     
     with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
