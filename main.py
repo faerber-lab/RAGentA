@@ -109,7 +109,7 @@ def main():
         all_metrics["PopQA"] = run_benchmark("PopQA", dataset, rag_system)
     
     if args.benchmark in ['asqa', 'all']:
-        dataset = dataset_loader.load_asqa()
+        dataset = dataset_loader.load_asqa()  # This will now load from asqa/dev.json
         if args.limit:
             dataset = dataset[:args.limit]
         all_metrics["ASQA"] = run_benchmark("ASQA", dataset, rag_system)
