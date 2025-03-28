@@ -24,5 +24,5 @@ class BenchmarkDatasets:
         
     def load_asqa(self):
         """Load ASQA dataset."""
-        with open(os.path.join(self.data_dir, "asqa/test.json"), 'r') as f:
+        with open(os.path.join(self.data_dir, "asqa/dev.json"), 'r') as f:
             return json.load(f)
