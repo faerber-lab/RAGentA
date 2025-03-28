@@ -122,32 +122,35 @@ def prepare_asqa():
     # Use "dev" split instead of "test"
     dataset = load_dataset("din0s/asqa", split="dev")
     
-    print("ASQA dataset example item structure:")
-    if len(dataset) > 0:
-        example_item = dataset[0]
-        print("Keys:", list(example_item.keys()))
-        print("Example:", example_item)
-    
     formatted_data = []
     for item in tqdm(dataset):
-        formatted_item = {
-            "question": item["question"],
-        }
+        # Extract the main ambiguous question
+        question = item["ambiguous_question"]
         
-        # Add answer field based on actual structure
-        if "answer" in item:
-            formatted_item["answer"] = item["answer"]
-        else:
-            # Check for alternative field names
-            for field in ["long_answer", "short_answer", "gold_answer"]:
-                if field in item:
-                    formatted_item["answer"] = item[field]
+        # Extract the long answer from annotations if available
+        answer = ""
+        if "annotations" in item and len(item["annotations"]) > 0:
+            for annotation in item["annotations"]:
+                if "long_answer" in annotation and annotation["long_answer"]:
+                    answer = annotation["long_answer"]
                     break
-            else:
-                formatted_item["answer"] = ""
-                print(f"Warning: No answer field found for question: {item['question']}")
         
-        formatted_data.append(formatted_item)
+        # If no long answer, try to construct one from qa_pairs
+        if not answer and "qa_pairs" in item and len(item["qa_pairs"]) > 0:
+            answers = []
+            for qa_pair in item["qa_pairs"]:
+                if "short_answers" in qa_pair and qa_pair["short_answers"]:
+                    qa_question = qa_pair.get("question", "")
+                    qa_answer = qa_pair["short_answers"][0]
+                    answers.append(f"{qa_question}: {qa_answer}")
+            
+            if answers:
+                answer = " ".join(answers)
+        
+        formatted_data.append({
+            "question": question,
+            "answer": answer
+        })
     
     with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
