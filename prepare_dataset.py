@@ -5,6 +5,13 @@ from tqdm import tqdm
 
 def prepare_arc_challenge():
     """Prepare ARC-Challenge dataset"""
+    output_file = "data/benchmarks/arc_challenge/test.json"
+    
+    # Skip if file already exists
+    if os.path.exists(output_file):
+        print(f"ARC-Challenge dataset already exists at {output_file}")
+        return
+    
     print("Preparing ARC-Challenge dataset...")
     os.makedirs("data/benchmarks/arc_challenge", exist_ok=True)
     
@@ -20,13 +27,20 @@ def prepare_arc_challenge():
             "answer": item["choices"]["text"][item["choices"]["label"].index(item["answerKey"])]
         })
     
-    with open("data/benchmarks/arc_challenge/test.json", "w") as f:
+    with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
     
     print(f"Saved {len(formatted_data)} ARC-Challenge test examples")
 
 def prepare_triviaqa():
     """Prepare TriviaQA dataset"""
+    output_file = "data/benchmarks/triviaqa/validation.json"
+    
+    # Skip if file already exists
+    if os.path.exists(output_file):
+        print(f"TriviaQA dataset already exists at {output_file}")
+        return
+    
     print("Preparing TriviaQA dataset...")
     os.makedirs("data/benchmarks/triviaqa", exist_ok=True)
     
@@ -41,53 +55,98 @@ def prepare_triviaqa():
             "aliases": item["answer"]["aliases"]
         })
     
-    with open("data/benchmarks/triviaqa/validation.json", "w") as f:
+    with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
     
     print(f"Saved {len(formatted_data)} TriviaQA validation examples")
 
 def prepare_popqa():
     """Prepare PopQA dataset"""
+    output_file = "data/benchmarks/popqa/test.json"
+    
+    # Skip if file already exists
+    if os.path.exists(output_file):
+        print(f"PopQA dataset already exists at {output_file}")
+        return
+    
     print("Preparing PopQA dataset...")
     os.makedirs("data/benchmarks/popqa", exist_ok=True)
     
-    # Load dataset
+    # Load dataset and inspect the structure
     dataset = load_dataset("akariasai/PopQA", split="test")
     
+    # Print an example item to see its structure
+    print("PopQA dataset example item structure:")
+    if len(dataset) > 0:
+        example_item = dataset[0]
+        print("Keys:", list(example_item.keys()))
+        print("Example:", example_item)
+    
+    # Modify the formatting based on the actual structure
     formatted_data = []
     for item in tqdm(dataset):
-        formatted_data.append({
-            "question": item["question"],
-            "answer": item["answers"][0] if item["answers"] else "",  # Take first answer if available
-            "all_answers": item["answers"] if "answers" in item else []
-        })
+        # Assuming the structure issue is fixed, adjust as needed based on inspection
+        formatted_item = {"question": item["question"]}
+        
+        # Add the answer based on actual field names
+        if "answer" in item:
+            formatted_item["answer"] = item["answer"]
+        else:
+            # If none of the expected answer fields are present, use an empty string
+            formatted_item["answer"] = ""
+            print(f"Warning: No answer field found for question: {item['question']}")
+        
+        formatted_data.append(formatted_item)
     
-    with open("data/benchmarks/popqa/test.json", "w") as f:
+    with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
     
     print(f"Saved {len(formatted_data)} PopQA test examples")
 
 def prepare_asqa():
     """Prepare ASQA dataset"""
+    output_file = "data/benchmarks/asqa/test.json"
+    
+    # Skip if file already exists
+    if os.path.exists(output_file):
+        print(f"ASQA dataset already exists at {output_file}")
+        return
+    
     print("Preparing ASQA dataset...")
     os.makedirs("data/benchmarks/asqa", exist_ok=True)
     
     # Load dataset
     dataset = load_dataset("din0s/asqa", split="test")
     
+    # Print an example item to see its structure
+    print("ASQA dataset example item structure:")
+    if len(dataset) > 0:
+        example_item = dataset[0]
+        print("Keys:", list(example_item.keys()))
+        print("Example:", example_item)
+    
     formatted_data = []
     for item in tqdm(dataset):
-        formatted_data.append({
+        formatted_item = {
             "question": item["question"],
-            "answer": item["answer"],
-            "long_answer": item["long_answer"] if "long_answer" in item else item["answer"]
-        })
+        }
+        
+        # Add answer based on actual field names
+        if "answer" in item:
+            formatted_item["answer"] = item["answer"]
+        elif "long_answer" in item:
+            formatted_item["answer"] = item["long_answer"]
+        else:
+            formatted_item["answer"] = ""
+            print(f"Warning: No answer field found for question: {item['question']}")
+        
+        formatted_data.append(formatted_item)
     
-    with open("data/benchmarks/asqa/test.json", "w") as f:
+    with open(output_file, "w") as f:
         json.dump(formatted_data, f, indent=2)
     
     print(f"Saved {len(formatted_data)} ASQA test examples")
-
+    
 def prepare_all_datasets():
     """Prepare all benchmark datasets"""
     prepare_arc_challenge()
