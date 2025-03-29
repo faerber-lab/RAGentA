@@ -7,19 +7,14 @@
 #SBATCH --time=12:00:00
 #SBATCH --job-name=main-rag
 
-# Set cache directories on horse workspace
-CACHE_BASE="/data/horse/ws/${USER}-main-rag/cache"
-mkdir -p $CACHE_BASE
-
-# Set all cache directories
-export HF_DATASETS_CACHE="${CACHE_BASE}/hf_datasets"
-export TRANSFORMERS_CACHE="${CACHE_BASE}/hf_models"
-export HF_HOME="${CACHE_BASE}/huggingface"
-export TORCH_HOME="${CACHE_BASE}/torch"
-# Accept running custom code for datasets
+# Set cache directories BEFORE activating environment
+export HF_DATASETS_CACHE="/data/horse/ws/jihe529c-main-rag/cache/hf_datasets"
+export TRANSFORMERS_CACHE="/data/horse/ws/jihe529c-main-rag/cache/hf_models"
+export HF_HOME="/data/horse/ws/jihe529c-main-rag/cache/huggingface"
+export TORCH_HOME="/data/horse/ws/jihe529c-main-rag/cache/torch"
 export HF_DATASETS_TRUST_REMOTE_CODE=1
 
-# Create cache directories
+# Create directories
 mkdir -p $HF_DATASETS_CACHE
 mkdir -p $TRANSFORMERS_CACHE
 mkdir -p $HF_HOME
