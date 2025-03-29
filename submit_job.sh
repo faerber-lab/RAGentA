@@ -13,6 +13,7 @@ export TRANSFORMERS_CACHE="/data/horse/ws/jihe529c-main-rag/cache/hf_models"
 export HF_HOME="/data/horse/ws/jihe529c-main-rag/cache/huggingface"
 export TORCH_HOME="/data/horse/ws/jihe529c-main-rag/cache/torch"
 export HF_DATASETS_TRUST_REMOTE_CODE=1
+export HUGGING_FACE_HUB_TOKEN=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
 
 # Create directories
 mkdir -p $HF_DATASETS_CACHE
