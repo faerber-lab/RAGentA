@@ -1,7 +1,33 @@
 import os
+import sys
 import json
 from datasets import load_dataset
 from tqdm import tqdm
+
+# Get the current username
+# username = os.getenv('USER')
+
+# Set cache directories on horse workspace
+cache_base = f"/data/horse/ws/jihe529c-main-rag/cache"
+os.makedirs(cache_base, exist_ok=True)
+
+# Set all cache directories
+os.environ["HF_DATASETS_CACHE"] = f"{cache_base}/hf_datasets"
+os.environ["TRANSFORMERS_CACHE"] = f"{cache_base}/hf_models"
+os.environ["HF_HOME"] = f"{cache_base}/huggingface"
+os.environ["TORCH_HOME"] = f"{cache_base}/torch"
+# Accept running custom code for datasets
+os.environ["HF_DATASETS_TRUST_REMOTE_CODE"] = "1"
+
+# Create cache directories
+for cache_dir in [
+    os.environ["HF_DATASETS_CACHE"],
+    os.environ["TRANSFORMERS_CACHE"],
+    os.environ["HF_HOME"],
+    os.environ["TORCH_HOME"]
+]:
+    os.makedirs(cache_dir, exist_ok=True)
+
 
 def prepare_arc_challenge():
     """Prepare ARC-Challenge dataset"""
