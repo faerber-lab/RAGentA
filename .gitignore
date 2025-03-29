@@ -66,6 +66,7 @@ data/benchmarks/*
 *.h5
 *.model
 *.pkl
+*.out
 
 # FAISS indexes
 *.faiss
