@@ -38,7 +38,7 @@ class WikipediaRetriever:
         """Prepare Wikipedia data for retrieval."""
         print("Loading Wikipedia dataset...")
         # Use a smaller subset for testing (for full reproduction, use the complete dataset)
-        wiki_data = load_dataset("wikipedia", "20220301.en", split="train[:100000]")
+        wiki_data = load_dataset("wikipedia", "20220301.en", split="train[:100000]", trust_remote_code=True)
         
         # Process Wikipedia articles into passages
         print("Processing Wikipedia articles into passages...")
