@@ -6,6 +6,4 @@ faiss-cpu>=1.7.4  # or faiss-gpu for GPU support
 sentence-transformers>=2.2.2
 datasets>=2.12.0
 rouge>=1.0.1
-pip install wheel setuptools packaging ninja
-pip install flash-attn --no-build-isolation
 
