@@ -45,9 +45,9 @@ Is this document relevant and supportive for answering the question?"""
     def _create_agent3_prompt(self, query, filtered_documents):
         """Create prompt for Agent-3 (Final-Predictor)."""
         docs_text = "\n\n".join([f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)])
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. You should only provide the correct answer without repeating the question and instruction.
+        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. Your task is to answer the following question using ONLY the information from the provided documents.Provide a single, direct answer to the question. Do NOT include follow-up questions or additional Q&A pairs.
 
-{docs_text}
+Document: {docs_text}
 
 Question: {query}
 
