@@ -19,7 +19,6 @@ class LLMAgent:
             model_name, 
             torch_dtype=torch.bfloat16,  # bfloat16 is well-supported on H100s
             device_map="auto",
-            use_flash_attention_2=True,  # Enable Flash Attention 2 for H100s
         )
         self.device = device
         print("Model loaded")
