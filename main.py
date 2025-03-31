@@ -36,9 +36,9 @@ def run_benchmark(benchmark_name, dataset, rag_system, results_dir="results/benc
     for item in tqdm(dataset):
         query = item["question"]
         reference = item["answer"]
-        choices = item["choices"]
+        choices = item.get("choices", None)  # Get choices if they exist
         
-        # Process the query with choices
+        # Process the query
         answer, debug_info = rag_system.answer_query(query, choices=choices)
         
         predictions.append(answer)
