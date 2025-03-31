@@ -135,8 +135,14 @@ Answer: """
         print("Agent-3 generating final answer...")
         if filtered_docs:
             docs_only = [doc for doc, _ in filtered_docs]
-            prompt = self._create_agent3_prompt(query, docs_only)
-            final_answer = self.agent3.generate(prompt, max_new_tokens=150, repetition_penalty=1.2)
+            
+            # Use different prompt for multiple-choice questions
+            if choices:
+                prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
+            else:
+                prompt = self._create_agent3_prompt(query, docs_only)
+                
+            final_answer = self.agent3.generate(prompt)
         else:
             # Fall back to using all documents if none pass the filter
             print("Warning: No documents passed the filter, using all documents")
