@@ -26,6 +26,9 @@ from tqdm import tqdm
 def run_benchmark(benchmark_name, dataset, rag_system, results_dir="results/benchmarks"):
     """Run benchmark on a dataset."""
     os.makedirs(results_dir, exist_ok=True)
+
+    # For ARC-Challenge
+    dataset = dataset_loader.load_arc_challenge()
     
     predictions = []
     references = []
@@ -36,9 +39,10 @@ def run_benchmark(benchmark_name, dataset, rag_system, results_dir="results/benc
     for item in tqdm(dataset):
         query = item["question"]
         reference = item["answer"]
+        choices = item["choices"]
         
-        # Process the query
-        answer, debug_info = rag_system.answer_query(query)
+        # Process the query with choices
+        answer, debug_info = rag_system.answer_query(query, choices=choices)
         
         predictions.append(answer)
         references.append(reference)
