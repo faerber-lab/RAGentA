@@ -74,6 +74,18 @@ Choices:
 Select the best answer choice (A, B, C, or D) based ONLY on the information in the documents. Provide just the letter.
 
 Answer: """
+
+    def extract_direct_answer(self, generated_text):
+        """Extract just the direct answer without follow-up questions."""
+        # Split by newlines and take first non-empty line
+        lines = [line.strip() for line in generated_text.split('\n') if line.strip()]
+        if lines:
+            # If there's a question mark in subsequent lines, cut there
+            for i, line in enumerate(lines):
+                if i > 0 and '?' in line:
+                    return '\n'.join(lines[:i]).strip()
+            return lines[0]  # Just take the first line as a fallback
+        return generated_text
     
     def answer_query(self, query):
         """
@@ -139,16 +151,28 @@ Answer: """
             # Use different prompt for multiple-choice questions
             if choices:
                 prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
+                # Use lower temperature for multiple choice
+                raw_answer = self.agent3.generate(prompt, temperature=0.2)
             else:
                 prompt = self._create_agent3_prompt(query, docs_only)
-                
-            final_answer = self.agent3.generate(prompt)
+                # Use repetition penalty and lower temperature for open-ended questions
+                raw_answer = self.agent3.generate(prompt, max_new_tokens=150, temperature=0.3, repetition_penalty=1.2)
+            
+            # Clean up the answer to remove follow-up questions
+            final_answer = self.extract_direct_answer(raw_answer)
         else:
             # Fall back to using all documents if none pass the filter
             print("Warning: No documents passed the filter, using all documents")
             docs_only = [doc for doc, _ in doc_answers]
-            prompt = self._create_agent3_prompt(query, docs_only)
-            final_answer = self.agent3.generate(prompt, max_new_tokens=150, repetition_penalty=1.2)
+            
+            if choices:
+                prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
+                raw_answer = self.agent3.generate(prompt, temperature=0.2)
+            else:
+                prompt = self._create_agent3_prompt(query, docs_only)
+                raw_answer = self.agent3.generate(prompt, max_new_tokens=150, temperature=0.3, repetition_penalty=1.2)
+            
+            final_answer = self.extract_direct_answer(raw_answer)
         
         # Return the answer and debug information
         debug_info = {
