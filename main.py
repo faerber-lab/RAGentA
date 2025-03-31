@@ -27,9 +27,6 @@ def run_benchmark(benchmark_name, dataset, rag_system, results_dir="results/benc
     """Run benchmark on a dataset."""
     os.makedirs(results_dir, exist_ok=True)
 
-    # For ARC-Challenge
-    dataset = dataset_loader.load_arc_challenge()
-    
     predictions = []
     references = []
     details = []
