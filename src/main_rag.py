@@ -136,13 +136,13 @@ Answer: """
         if filtered_docs:
             docs_only = [doc for doc, _ in filtered_docs]
             prompt = self._create_agent3_prompt(query, docs_only)
-            final_answer = self.agent3.generate(prompt)
+            final_answer = self.agent3.generate(prompt, max_new_tokens=150, repetition_penalty=1.2)
         else:
             # Fall back to using all documents if none pass the filter
             print("Warning: No documents passed the filter, using all documents")
             docs_only = [doc for doc, _ in doc_answers]
             prompt = self._create_agent3_prompt(query, docs_only)
-            final_answer = self.agent3.generate(prompt)
+            final_answer = self.agent3.generate(prompt, max_new_tokens=150, repetition_penalty=1.2)
         
         # Return the answer and debug information
         debug_info = {
