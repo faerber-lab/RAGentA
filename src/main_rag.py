@@ -56,6 +56,25 @@ Question: {query}
 
 Answer: """
     
+    def _create_agent3_prompt_for_multiple_choice(self, query, choices, filtered_documents):
+        """Create prompt for Agent-3 (Final-Predictor) for multiple-choice questions."""
+        docs_text = "\n\n".join([f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)])
+        choices_text = "\n".join([f"{chr(65+i)}. {choice}" for i, choice in enumerate(choices)])
+        
+        return f"""You are an accurate and reliable AI assistant that can answer multiple-choice questions with the help of external documents.
+
+Documents:
+{docs_text}
+
+Question: {query}
+
+Choices:
+{choices_text}
+
+Select the best answer choice (A, B, C, or D) based ONLY on the information in the documents. Provide just the letter.
+
+Answer: """
+    
     def answer_query(self, query):
         """
         Process a query using the MAIN-RAG framework.
