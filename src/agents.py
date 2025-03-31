@@ -23,13 +23,16 @@ class LLMAgent:
         self.device = device
         print("Model loaded")
         
-    def generate(self, prompt, max_new_tokens=256):
-        """Generate text based on prompt."""
+    def generate(self, prompt, max_new_tokens=256, temperature=0.7, repetition_penalty=1.0):
+        """Generate text based on prompt with temperature control."""
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                repetition_penalty=repetition_penalty,
+                do_sample=True,
                 pad_token_id=self.tokenizer.eos_token_id
             )
         response = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], 
