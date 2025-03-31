@@ -87,7 +87,7 @@ Answer: """
             return lines[0]  # Just take the first line as a fallback
         return generated_text
     
-    def answer_query(self, query):
+    def answer_query(self, query, choices=None):
         """
         Process a query using the MAIN-RAG framework.
         
