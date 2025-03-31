@@ -108,11 +108,24 @@ def main():
     
     # Run benchmarks
     all_metrics = {}
-    
+
+    # For ARC-Challenge benchmark
     if args.benchmark in ['arc', 'all']:
         dataset = dataset_loader.load_arc_challenge()
         if args.limit:
             dataset = dataset[:args.limit]
+        
+        predictions = []
+        references = []
+        details = []
+        
+        for item in tqdm(dataset):
+            query = item["question"]
+            reference = item["answer"]
+            choices = item["choices"]  # Get the choices
+            
+            # Pass choices to answer_query
+            answer, debug_info = rag_system.answer_query(query, choices=choices)
         all_metrics["ARC-Challenge"] = run_benchmark("ARC-Challenge", dataset, rag_system)
     
     if args.benchmark in ['triviaqa', 'all']:
