@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=6
 #SBATCH --mem-per-cpu=15G
 #SBATCH --gres=gpu:1
-#SBATCH --time=10:00:00
+#SBATCH --time=4:00:00
 #SBATCH --job-name=main-rag-arc
 
 # Set cache directories BEFORE activating environment
@@ -27,4 +27,4 @@ module load PyTorch/2.1.2
 source env/bin/activate
 
 # Run benchmark
-python main.py --model "mistralai/Mistral-7B-v0.1" --benchmark arc --limit 100
+python main.py --model "mistralai/Mistral-7B-v0.1" --benchmark asqa --limit 10
