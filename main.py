@@ -37,9 +37,15 @@ def run_benchmark(benchmark_name, dataset, rag_system, results_dir="results/benc
         query = item["question"]
         reference = item["answer"]
         choices = item.get("choices", None)  # Get choices if they exist
+        print(f"\nQuestion: {query}")
+        if choices:
+            print(f"Choices: {choices}")
+            print(f"Correct answer: {choices[item['answer_idx']]}")
         
         # Process the query
         answer, debug_info = rag_system.answer_query(query, choices=choices)
+        
+        print(f"Model answer: {answer}")
         
         predictions.append(answer)
         references.append(reference)
