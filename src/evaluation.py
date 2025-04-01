@@ -23,17 +23,15 @@ def calculate_rouge(predictions, references):
     scores = rouge.get_scores(predictions, references, avg=True)
     return scores
 
-def choice_accuracy(predictions, choices, answer_indices):
+def choice_accuracy(predictions, choices_list, answer_indices):
     """Calculate accuracy for multiple-choice questions."""
     correct = 0
-    for pred, choices_list, answer_idx in zip(predictions, choices, answer_indices):
-        # Clean up the prediction - get just the letter
+    for pred, choices, answer_idx in zip(predictions, choices_list, answer_indices):
+        # Extract just the letter from the prediction
         pred = pred.strip().upper()
-        if len(pred) > 0:
-            # If the prediction starts with a letter A-D, use that
-            if pred[0] in "ABCD":
-                selected_idx = ord(pred[0]) - ord('A')
-                if selected_idx == answer_idx:
-                    correct += 1
+        if pred and pred[0] in "ABCD":
+            selected_idx = ord(pred[0]) - ord('A')
+            if selected_idx == answer_idx:
+                correct += 1
     
     return correct / len(predictions)
