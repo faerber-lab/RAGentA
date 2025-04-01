@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=15G
 #SBATCH --gres=gpu:1
 #SBATCH --time=4:00:00
-#SBATCH --job-name=main-rag-arc
+#SBATCH --job-name=main-rag-popqa
 
 # Set cache directories BEFORE activating environment
 export HF_DATASETS_CACHE="/data/horse/ws/jihe529c-main-rag/cache/hf_datasets"
@@ -27,4 +27,4 @@ module load PyTorch/2.1.2
 source env/bin/activate
 
 # Run benchmark
-python main.py --model "mistralai/Mistral-7B-v0.1" --benchmark popqa --limit 10
+python main.py --model "mistralai/Mistral-7B-v0.1" --benchmark popqa --limit 100
