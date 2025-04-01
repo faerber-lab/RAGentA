@@ -85,6 +85,22 @@ Answer: """
                     return '\n'.join(lines[:i]).strip()
             return lines[0]  # Just take the first line as a fallback
         return generated_text
+        
+    def extract_multiple_choice_answer(self, text):
+        """Extract just the letter choice from a multiple-choice answer."""
+        text = text.strip().upper()
+        
+        # If the text starts with A, B, C, or D followed by anything, take just the letter
+        if text and text[0] in "ABCD":
+            return text[0]
+        
+        # Otherwise search for a letter in the text
+        for char in text:
+            if char in "ABCD":
+                return char
+        
+        # If no letter found, return the first character (fallback)
+        return text[:1] if text else ""
     
     def answer_query(self, query, choices=None):
         """
@@ -163,13 +179,15 @@ Answer: """
             # Fall back to using all documents if none pass the filter
             print("Warning: No documents passed the filter, using all documents")
             docs_only = [doc for doc, _ in doc_answers]
-            
+
             if choices:
                 prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
                 raw_answer = self.agent3.generate(prompt, temperature=0.2)
+                final_answer = self.extract_multiple_choice_answer(raw_answer)
             else:
                 prompt = self._create_agent3_prompt(query, docs_only)
-                raw_answer = self.agent3.generate(prompt, max_new_tokens=150, temperature=0.3, repetition_penalty=1.2)
+                raw_answer = self.agent3.generate(prompt, temperature=0.3, repetition_penalty=1.2)
+                final_answer = self.extract_direct_answer(raw_answer)
             
             final_answer = self.extract_direct_answer(raw_answer)
         
