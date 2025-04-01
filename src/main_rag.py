@@ -57,9 +57,10 @@ Question: {query}
 Answer: """
     
     def _create_agent3_prompt_for_multiple_choice(self, query, choices, filtered_documents):
+        """Create prompt for Agent-3 (Final-Predictor) for multiple-choice questions."""
         docs_text = "\n\n".join([f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)])
         choices_text = "\n".join([f"{chr(65+i)}. {choice}" for i, choice in enumerate(choices)])
-    
+        
         return f"""You are an accurate and reliable AI assistant that can answer multiple-choice questions with the help of external documents.
 
 Documents:
@@ -70,7 +71,7 @@ Question: {query}
 Choices:
 {choices_text}
 
-Select the best answer choice (A, B, C, or D) based ONLY on the information in the documents. Provide ONLY the letter of your answer without any explanation.
+Select the best answer choice (A, B, C, or D) based ONLY on the information in the documents. Provide ONLY the letter of your answer.
 
 Answer: """
 
@@ -161,13 +162,14 @@ Answer: """
         # Step 6: Agent-3 generates final answer
         print("Agent-3 generating final answer...")
         if filtered_docs:
-            docs_only = [doc for doc, _ in filtered_docs]
-            
-            # Use different prompt for multiple-choice questions
-            if choices:
-                prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
-                # Use lower temperature for multiple choice
-                raw_answer = self.agent3.generate(prompt, temperature=0.2)
+                docs_only = [doc for doc, _ in filtered_docs]
+                
+                if choices:  # If this is a multiple-choice question
+                    prompt = self._create_agent3_prompt_for_multiple_choice(query, choices, docs_only)
+                else:  # For open-ended questions
+                    prompt = self._create_agent3_prompt(query, docs_only)
+                
+                final_answer = self.agent3.generate(prompt)
             else:
                 prompt = self._create_agent3_prompt(query, docs_only)
                 # Use repetition penalty and lower temperature for open-ended questions
