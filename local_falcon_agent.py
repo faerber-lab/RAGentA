@@ -10,7 +10,7 @@ class LocalFalconAgent:
     the model directly instead of making API calls.
     """
     
-    def __init__(self, model_name="tiiuae/falcon-3-10b-instruct", device="cuda", precision="bfloat16"):
+    def __init__(self, model_name="tiiuae/falcon-3-10B-instruct", device="cuda", precision="bfloat16"):
         """
         Initialize the Falcon agent with a local model.
         
