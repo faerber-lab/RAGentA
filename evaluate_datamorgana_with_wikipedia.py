@@ -3,7 +3,7 @@
 Evaluate DataMorgana questions using Falcon with Wikipedia retriever.
 
 This script loads QA pairs from a DataMorgana JSONL file, processes them 
-using MAIN-RAG with a Wikipedia retriever and Falcon LLM, and evaluates
+using MAIN-RAG with a Wikipedia retriever and local Falcon LLM, and evaluates
 the results.
 """
 
@@ -14,7 +14,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 from main_rag import MAIN_RAG
-from falcon_agent import FalconAgent
+from local_falcon_agent import LocalFalconAgent  # Import the local Falcon agent
 from wikipedia_retriever import WikipediaRetriever
 
 
@@ -42,13 +42,13 @@ def load_jsonl(file_path):
     return qa_pairs
 
 
-def evaluate_datamorgana_with_wikipedia(datamorgana_file, falcon_api_key, n_value=0.5, output_file=None):
+def evaluate_datamorgana_with_local_falcon(datamorgana_file, falcon_model="tiiuae/falcon-3-10b-instruct", n_value=0.5, output_file=None):
     """
-    Evaluate DataMorgana questions using Falcon with Wikipedia retriever.
+    Evaluate DataMorgana questions using local Falcon with Wikipedia retriever.
     
     Args:
         datamorgana_file: Path to DataMorgana JSONL file
-        falcon_api_key: API key for Falcon
+        falcon_model: Name or path of the Falcon model
         n_value: Adaptive judge bar parameter
         output_file: Path to save results
     """
@@ -62,9 +62,9 @@ def evaluate_datamorgana_with_wikipedia(datamorgana_file, falcon_api_key, n_valu
     print("Initializing Wikipedia retriever...")
     retriever = WikipediaRetriever()
     
-    # Initialize Falcon agent
-    print(f"Initializing Falcon agent...")
-    falcon_agent = FalconAgent(falcon_api_key)
+    # Initialize local Falcon agent
+    print(f"Initializing local Falcon model: {falcon_model}...")
+    falcon_agent = LocalFalconAgent(model_name=falcon_model)
     
     # Initialize MAIN-RAG
     print(f"Initializing MAIN-RAG with n={n_value}...")
@@ -141,16 +141,16 @@ def evaluate_datamorgana_with_wikipedia(datamorgana_file, falcon_api_key, n_valu
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate DataMorgana questions using Falcon with Wikipedia retriever")
+    parser = argparse.ArgumentParser(description="Evaluate DataMorgana questions using local Falcon with Wikipedia retriever")
     parser.add_argument(
         "--datamorgana_file", 
         required=True,
         help="Path to DataMorgana JSONL file"
     )
     parser.add_argument(
-        "--falcon_key", 
-        required=True,
-        help="API key for Falcon"
+        "--falcon_model", 
+        default="tiiuae/falcon-3-10b-instruct",
+        help="Name or path of the Falcon model"
     )
     parser.add_argument(
         "--n", 
@@ -173,10 +173,10 @@ def main():
         os.makedirs("results", exist_ok=True)
         args.output = f"results/datamorgana_eval_{timestamp}.json"
     
-    print("Evaluating DataMorgana questions using Falcon with Wikipedia retriever...")
-    evaluate_datamorgana_with_wikipedia(
+    print("Evaluating DataMorgana questions using local Falcon with Wikipedia retriever...")
+    evaluate_datamorgana_with_local_falcon(
         datamorgana_file=args.datamorgana_file,
-        falcon_api_key=args.falcon_key,
+        falcon_model=args.falcon_model,
         n_value=args.n,
         output_file=args.output
     )
