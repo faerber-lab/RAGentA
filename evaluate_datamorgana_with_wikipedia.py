@@ -42,7 +42,7 @@ def load_jsonl(file_path):
     return qa_pairs
 
 
-def evaluate_datamorgana_with_local_falcon(datamorgana_file, falcon_model="tiiuae/falcon-3-10b-instruct", n_value=0.5, output_file=None):
+def evaluate_datamorgana_with_local_falcon(datamorgana_file, falcon_model="tiiuae/falcon-3-10B-instruct", n_value=0.5, output_file=None):
     """
     Evaluate DataMorgana questions using local Falcon with Wikipedia retriever.
     
@@ -149,7 +149,7 @@ def main():
     )
     parser.add_argument(
         "--falcon_model", 
-        default="tiiuae/falcon-3-10b-instruct",
+        default="tiiuae/falcon-3-10B-instruct",
         help="Name or path of the Falcon model"
     )
     parser.add_argument(
