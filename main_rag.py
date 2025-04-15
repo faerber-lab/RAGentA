@@ -1,182 +1,44 @@
 import numpy as np
 from tqdm import tqdm
 import re
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from capella_env_setup import setup_torch_for_h100
-
-class LLMAgent:
-    def __init__(self, model_name="mistralai/Mistral-7B-v0.1", device="cuda", precision="bfloat16"):
-        """
-        LLM agent for generating text and calculating probabilities.
-        Optimized for NVIDIA H100 GPUs.
-
-        Args:
-            model_name: Hugging Face model name
-            device: Device to use (cuda or cpu)
-            precision: Model precision (bfloat16, float16, or float32)
-        """
-        print(f"Loading model {model_name}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        
-        # Enable TF32 precision (good for H100)
-        has_cuda = setup_torch_for_h100()
-        self.device = device if has_cuda else "cpu"
-        
-        # Determine torch dtype based on precision
-        if precision == "bfloat16" and torch.cuda.is_bf16_supported():
-            # H100 has excellent bfloat16 support
-            torch_dtype = torch.bfloat16
-            print("Using bfloat16 precision")
-        elif precision == "float16":
-            torch_dtype = torch.float16
-            print("Using float16 precision")
-        else:
-            torch_dtype = torch.float32
-            print("Using float32 precision")
-            
-        # Load model with optimizations for H100
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch_dtype,
-            device_map="auto",          # Automatically optimize placement
-            max_memory={0: "80GiB"},    # Limit to avoid OOM, adjust if needed
-            trust_remote_code=True,     # Some newer models may require this
-        )
-        
-        # Enable flash attention if available (for newer models on H100)
-        if hasattr(self.model.config, "use_flash_attention") and self.device == "cuda":
-            self.model.config.use_flash_attention = True
-            print("Flash Attention enabled")
-            
-        print("Model loaded")
-
-    def generate(self, prompt, max_new_tokens=256):
-        """Generate text using greedy decoding as used in the paper."""
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            # H100 specific optimizations
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=(self.device == "cuda")):
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    do_sample=False,  # Use greedy decoding
-                    pad_token_id=self.tokenizer.eos_token_id,
-                )
-                
-        response = self.tokenizer.decode(
-            outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True
-        )
-        return response
-
-    def get_log_probs(self, prompt, target_tokens=["Yes", "No"]):
-        """Calculate log probabilities for specific tokens."""
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            # H100 specific optimizations
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=(self.device == "cuda")):
-                outputs = self.model(**inputs)
-
-        # Get logits for the last token position
-        logits = outputs.logits[0, -1, :]
-
-        # Get token IDs for target tokens
-        target_ids = []
-        for token in target_tokens:
-            # Handle different tokenizer behaviors
-            token_ids = self.tokenizer.encode(" " + token, add_special_tokens=False)
-            # Use the first token if multiple tokens
-            target_ids.append(
-                token_ids[0] if token_ids else self.tokenizer.unk_token_id
-            )
-
-        # Calculate log probabilities using softmax
-        log_probs = torch.log_softmax(logits, dim=0)
-        target_log_probs = {
-            token: log_probs[tid].item()
-            for token, tid in zip(target_tokens, target_ids)
-        }
-
-        return target_log_probs
-    
-    def batch_process(self, prompts, generate=True, max_new_tokens=256):
-        """
-        Process a batch of prompts in parallel (useful for H100 efficiency).
-        
-        Args:
-            prompts: List of prompt strings
-            generate: If True, generate text; if False, return log probs for Yes/No
-            max_new_tokens: Maximum new tokens for generation
-            
-        Returns:
-            List of responses or log probs
-        """
-        if not prompts:
-            return []
-            
-        # Tokenize all prompts
-        inputs = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.device)
-        
-        results = []
-        with torch.no_grad():
-            # H100 specific optimizations
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=(self.device == "cuda")):
-                if generate:
-                    # Generation mode
-                    outputs = self.model.generate(
-                        **inputs,
-                        max_new_tokens=max_new_tokens,
-                        do_sample=False,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                    )
-                    
-                    # Decode each output
-                    for i, output in enumerate(outputs):
-                        input_len = inputs.input_ids[i].shape[0]
-                        response = self.tokenizer.decode(
-                            output[input_len:], skip_special_tokens=True
-                        )
-                        results.append(response)
-                else:
-                    # Log probs mode for Yes/No
-                    outputs = self.model(**inputs)
-                    
-                    # Process each output
-                    for i in range(inputs.input_ids.shape[0]):
-                        # Get logits for the last token position
-                        logits = outputs.logits[i, -1, :]
-                        
-                        # Calculate log probs for Yes/No
-                        yes_id = self.tokenizer.encode(" Yes", add_special_tokens=False)[0]
-                        no_id = self.tokenizer.encode(" No", add_special_tokens=False)[0]
-                        
-                        log_probs = torch.log_softmax(logits, dim=0)
-                        results.append({
-                            "Yes": log_probs[yes_id].item(),
-                            "No": log_probs[no_id].item()
-                        })
-                        
-        return results
-
 
 class MAIN_RAG:
-    def __init__(self, retriever, agent_model="mistralai/Mistral-7B-v0.1", n=0.0):
+    def __init__(self, retriever, agent_model=None, n=0.0, falcon_api_key=None, pinecone_api_key=None):
         """
         MAIN-RAG framework implementation.
 
         Args:
-            retriever: Document retriever instance
-            agent_model: Model name for the agents
+            retriever: Document retriever instance (Pinecone or other)
+            agent_model: Model name or pre-initialized agents
             n: Hyperparameter for adaptive judge bar adjustment (default 0.0)
+            falcon_api_key: API key for Falcon model (if using Falcon)
+            pinecone_api_key: API key for Pinecone (if not using a pre-initialized retriever)
         """
         self.retriever = retriever
-        # Initialize all agents with the same model for efficiency
-        self.agent1 = LLMAgent(agent_model)  # Predictor
-        self.agent2 = self.agent1  # Judge (using same instance to save memory)
-        self.agent3 = self.agent1  # Final-Predictor (using same instance to save memory)
         self.n = n  # Hyperparameter for adaptive judge bar adjustment
+        
+        # Initialize agents based on provided parameters
+        if isinstance(agent_model, str):
+            if "falcon" in agent_model.lower() and falcon_api_key:
+                # Initialize Falcon agents
+                from falcon_agent import FalconAgent
+                self.agent1 = FalconAgent(falcon_api_key)  # Predictor
+                self.agent2 = self.agent1  # Judge (reuse the same instance to save resources)
+                self.agent3 = self.agent1  # Final-Predictor
+                print(f"Using Falcon agents with API for all three agent roles")
+            else:
+                # Initialize local LLM agents
+                from llm_agent import LLMAgent
+                self.agent1 = LLMAgent(agent_model)  # Predictor
+                self.agent2 = self.agent1  # Judge
+                self.agent3 = self.agent1  # Final-Predictor
+                print(f"Using local LLM agents with model {agent_model}")
+        else:
+            # Use pre-initialized agent
+            self.agent1 = agent_model  # Predictor
+            self.agent2 = self.agent1  # Judge
+            self.agent3 = self.agent1  # Final-Predictor
+            print("Using pre-initialized agent for all three agent roles")
 
     def _create_agent1_prompt(self, query, document):
         """Create prompt for Agent-1 (Predictor)."""
@@ -403,49 +265,3 @@ Answer:"""
         }
 
         return final_answer, debug_info
-
-
-# Example usage with a simple retriever implementation
-class SimpleRetriever:
-    def __init__(self, documents=None):
-        self.documents = documents or []
-    
-    def retrieve(self, query, top_k=10):
-        """
-        Simple retriever for testing. In production, replace with
-        an actual retrieval system like the WikipediaRetriever from the paper.
-        """
-        # For testing, just return all documents (up to top_k)
-        return self.documents[:top_k]
-
-# Example usage
-if __name__ == "__main__":
-    # Sample documents for testing
-    sample_docs = [
-        "Paris is the capital city of France. The Eiffel Tower is located in Paris.",
-        "The Eiffel Tower was completed in 1889 and stands 330 meters tall.",
-        "France is a country in Western Europe with a population of about 67 million.",
-        "The French Revolution began in 1789.",
-        "The Louvre Museum is in Paris and houses the Mona Lisa painting.",
-        "Berlin is the capital of Germany. It's known for the Berlin Wall.",
-        "Tokyo is the capital of Japan and is the most populous metropolitan area in the world.",
-        "Mount Fuji is Japan's highest mountain at 3,776 meters.",
-        "The Great Wall of China is over 21,000 kilometers long.",
-        "New York City has five boroughs: Manhattan, Brooklyn, Queens, The Bronx, and Staten Island."
-    ]
-    
-    # Initialize retriever with sample documents
-    retriever = SimpleRetriever(sample_docs)
-    
-    # Initialize MAIN-RAG
-    main_rag = MAIN_RAG(retriever, agent_model="gpt2")  # Replace with your preferred model
-    
-    # Test query
-    query = "What is the height of the Eiffel Tower?"
-    answer, debug_info = main_rag.answer_query(query)
-    
-    print(f"\nQuery: {query}")
-    print(f"Answer: {answer}")
-    print(f"Adaptive Judge Bar (τq): {debug_info['tau_q']:.4f}")
-    print(f"Adjusted Judge Bar: {debug_info['adjusted_tau_q']:.4f}")
-    print(f"Number of filtered documents: {len(debug_info['filtered_docs'])}")
