@@ -1,4 +1,5 @@
 import torch
+import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class LocalFalconAgent:
@@ -18,8 +19,13 @@ class LocalFalconAgent:
             device: Device to use (cuda or cpu)
             precision: Model precision (bfloat16, float16, or float32)
         """
-        print(f"Loading local Falcon model: {model_name}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # Retrieve the Hugging Face token from the environment
+        token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        if not token:
+            raise ValueError("HUGGING_FACE_HUB_TOKEN environment variable is not set.")
+
+        # Initialize the tokenizer with the authentication token
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=token)
         
         # Determine torch dtype based on precision
         if precision == "bfloat16" and torch.cuda.is_bf16_supported():
