@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=6
 #SBATCH --mem-per-cpu=15G
 #SBATCH --gres=gpu:1
-#SBATCH --time=10:00:00
+#SBATCH --time=4:00:00
 #SBATCH --job-name=main-rag-liverag
 #SBATCH --output=logs/main_rag_%j.log
 
