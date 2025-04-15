@@ -29,25 +29,33 @@ def evaluate_datamorgana_with_wikipedia(falcon_api_key, datamorgana_file, n_valu
     Returns:
         Tuple of (metrics, detailed_results)
     """
-    # Load DataMorgana questions
-    print(f"Loading DataMorgana questions from {datamorgana_file}...")
-    with open(datamorgana_file, 'r') as f:
-        qa_pairs = json.load(f)
+    print(f"Loading DataMorgana questions from {qa_file}...")
     
-    # Initialize Wikipedia retriever (your existing implementation)
+    # Load JSONL file
+    qa_pairs = load_jsonl(qa_file)
+    print(f"Loaded {len(qa_pairs)} QA pairs")
+    
+    # Initialize Wikipedia retriever
     print("Initializing Wikipedia retriever...")
-    retriever = WikipediaRetriever(use_cached=True)
+    from wikipedia_retriever import WikipediaRetriever
+    retriever = WikipediaRetriever()
     
-    # Initialize MAIN-RAG with Falcon but using Wikipedia retriever
-    print(f"Initializing MAIN-RAG with Falcon model and Wikipedia retriever (n={n_value})...")
+    # Initialize MAIN-RAG with Falcon
+    print(f"Initializing MAIN-RAG with Falcon (n={n_value})...")
+    from main_rag import MAIN_RAG
+    from falcon_agent import FalconAgent
+    
+    # Create Falcon agent
+    falcon_agent = FalconAgent(falcon_api_key)
+    
+    # Create MAIN-RAG instance
     rag_system = MAIN_RAG(
         retriever=retriever,
-        agent_model="falcon-3-10b-instruct",
-        n=n_value,
-        falcon_api_key=falcon_api_key
+        agent_model=falcon_agent,  # Pass the pre-initialized agent
+        n=n_value
     )
     
-    # Process each question
+    # Process QA pairs
     results = []
     for i, qa_pair in enumerate(tqdm(qa_pairs, desc="Evaluating DataMorgana questions")):
         question = qa_pair["question"]
