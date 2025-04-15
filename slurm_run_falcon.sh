@@ -16,7 +16,7 @@ export TORCH_HOME="/data/horse/ws/jihe529c-main-rag/cache/torch"
 export HF_DATASETS_TRUST_REMOTE_CODE=1
 
 # API Keys (best practice would be to store these more securely)
-export PINECONE_API_KEY="pcsk_6yNXRS_K6NZ1qRf9gQht23BkagEU2jr4EZwVtTScvfpgQ1DfS5P34RJKkNcJEMxwNqUygD"
+export PINECONE_API_KEY="pcsk_49ja6W_QVfgwMg86st6pjLVPSn2hKUoQE7sHNGMebxs9PFxQuRf9xKc9ePU52de18HcJ2o"
 export FALCON_API_KEY="ai71-api-2f336f7f-318c-4773-bee9-a8651428640b"
 
 # Create directories
