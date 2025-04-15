@@ -1,54 +1,73 @@
-import argparse
+#!/usr/bin/env python
+"""
+Evaluate DataMorgana questions using Falcon with Wikipedia retriever.
+
+This script loads QA pairs from a DataMorgana JSONL file, processes them 
+using MAIN-RAG with a Wikipedia retriever and Falcon LLM, and evaluates
+the results.
+"""
+
 import os
 import json
+import argparse
 from datetime import datetime
 from tqdm import tqdm
 
-# Import your existing classes
 from main_rag import MAIN_RAG
+from falcon_agent import FalconAgent
 from wikipedia_retriever import WikipediaRetriever
-# The FalconAgent should be imported automatically by MAIN_RAG when needed
 
 
-def evaluate_datamorgana_with_wikipedia(falcon_api_key, datamorgana_file, n_value=0.5, output_file=None):
+def load_jsonl(file_path):
     """
-    Evaluate DataMorgana questions using Falcon model with Wikipedia retriever.
-    
-    This function:
-    1. Loads DataMorgana QA pairs
-    2. Initializes your existing Wikipedia retriever
-    3. Sets up MAIN-RAG with Wikipedia retriever but Falcon for agents
-    4. Processes each question and evaluates the answers
+    Load JSONL file (each line is a separate JSON object).
     
     Args:
-        falcon_api_key: API key for Falcon model
-        datamorgana_file: Path to DataMorgana QA pairs JSON file
-        n_value: Adaptive judge bar adjustment parameter
-        output_file: Path to save results
+        file_path: Path to the JSONL file
         
     Returns:
-        Tuple of (metrics, detailed_results)
+        List of JSON objects
     """
-    print(f"Loading DataMorgana questions from {qa_file}...")
+    qa_pairs = []
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line:  # Skip empty lines
+                try:
+                    qa_pair = json.loads(line)
+                    qa_pairs.append(qa_pair)
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing line: {line[:100]}...")
+                    print(f"Error details: {e}")
+    return qa_pairs
+
+
+def evaluate_datamorgana_with_wikipedia(datamorgana_file, falcon_api_key, n_value=0.5, output_file=None):
+    """
+    Evaluate DataMorgana questions using Falcon with Wikipedia retriever.
+    
+    Args:
+        datamorgana_file: Path to DataMorgana JSONL file
+        falcon_api_key: API key for Falcon
+        n_value: Adaptive judge bar parameter
+        output_file: Path to save results
+    """
+    print(f"Loading DataMorgana questions from {datamorgana_file}...")
     
     # Load JSONL file
-    qa_pairs = load_jsonl(qa_file)
+    qa_pairs = load_jsonl(datamorgana_file)
     print(f"Loaded {len(qa_pairs)} QA pairs")
     
     # Initialize Wikipedia retriever
     print("Initializing Wikipedia retriever...")
-    from wikipedia_retriever import WikipediaRetriever
     retriever = WikipediaRetriever()
     
-    # Initialize MAIN-RAG with Falcon
-    print(f"Initializing MAIN-RAG with Falcon (n={n_value})...")
-    from main_rag import MAIN_RAG
-    from falcon_agent import FalconAgent
-    
-    # Create Falcon agent
+    # Initialize Falcon agent
+    print(f"Initializing Falcon agent...")
     falcon_agent = FalconAgent(falcon_api_key)
     
-    # Create MAIN-RAG instance
+    # Initialize MAIN-RAG
+    print(f"Initializing MAIN-RAG with n={n_value}...")
     rag_system = MAIN_RAG(
         retriever=retriever,
         agent_model=falcon_agent,  # Pass the pre-initialized agent
@@ -57,44 +76,41 @@ def evaluate_datamorgana_with_wikipedia(falcon_api_key, datamorgana_file, n_valu
     
     # Process QA pairs
     results = []
-    for i, qa_pair in enumerate(tqdm(qa_pairs, desc="Evaluating DataMorgana questions")):
+    for i, qa_pair in enumerate(tqdm(qa_pairs, desc="Evaluating QA pairs")):
         question = qa_pair["question"]
-        reference_answer = qa_pair["answer"]
+        reference = qa_pair["answer"]
         
-        print(f"\n[{i+1}/{len(qa_pairs)}] Processing: {question}")
+        print(f"\n[{i+1}/{len(qa_pairs)}] Processing question: {question}")
         
         try:
-            # Get answer using MAIN-RAG
+            # Generate answer using MAIN-RAG
             answer, debug_info = rag_system.answer_query(question)
             
-            # Calculate simple metrics
-            contains = reference_answer.lower() in answer.lower() or answer.lower() in reference_answer.lower()
+            # Calculate simple metric
+            contains = reference.lower() in answer.lower() or answer.lower() in reference.lower()
             
-            # Save result
+            # Store result
             result = {
                 "question": question,
-                "reference_answer": reference_answer,
-                "generated_answer": answer,
+                "reference": reference,
+                "generated": answer,
                 "contains_answer": contains,
                 "tau_q": debug_info["tau_q"],
-                "adjusted_tau_q": debug_info["adjusted_tau_q"],
-                "filtered_docs_count": len(debug_info["filtered_docs"]),
-                "total_docs_count": len(debug_info["scores"])
+                "filtered_docs_count": len(debug_info["filtered_docs"])
             }
-            
             results.append(result)
             
-            # Print interim results
-            print(f"Generated answer: {answer}")
+            print(f"Answer: {answer}")
             print(f"Contains reference: {contains}")
-            print(f"τq: {debug_info['tau_q']:.4f}, adjusted: {debug_info['adjusted_tau_q']:.4f}")
-            print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{len(debug_info['scores'])}")
+            print(f"τq: {debug_info['tau_q']:.4f}")
+            print(f"Filtered docs: {len(debug_info['filtered_docs'])}")
             
         except Exception as e:
-            print(f"Error processing question: {e}")
+            print(f"Error processing question: {question}")
+            print(f"Error: {e}")
             results.append({
                 "question": question,
-                "reference_answer": reference_answer,
+                "reference": reference,
                 "error": str(e)
             })
     
@@ -104,65 +120,65 @@ def evaluate_datamorgana_with_wikipedia(falcon_api_key, datamorgana_file, n_valu
         "success_count": sum(1 for r in results if r.get("contains_answer", False)),
         "error_count": sum(1 for r in results if "error" in r)
     }
-    
-    if metrics["total_questions"] > 0:
-        metrics["success_rate"] = metrics["success_count"] / metrics["total_questions"]
-    else:
-        metrics["success_rate"] = 0.0
+    metrics["success_rate"] = metrics["success_count"] / metrics["total_questions"] if metrics["total_questions"] > 0 else 0
     
     # Save results if requested
     if output_file:
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "metrics": metrics,
                 "results": results
             }, f, indent=2)
         print(f"Results saved to {output_file}")
     
-    # Print overall metrics
-    print("\n=== Overall Results ===")
+    # Print summary
+    print("\nEvaluation Results:")
     print(f"Total questions: {metrics['total_questions']}")
     print(f"Success rate: {metrics['success_rate']:.2%} ({metrics['success_count']}/{metrics['total_questions']})")
-    print(f"Error count: {metrics['error_count']}")
+    print(f"Error rate: {metrics['error_count'] / metrics['total_questions']:.2%}")
     
     return metrics, results
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate DataMorgana with Falcon and Wikipedia")
+    parser = argparse.ArgumentParser(description="Evaluate DataMorgana questions using Falcon with Wikipedia retriever")
     parser.add_argument(
-        "--falcon_key", required=True,
-        help="API key for Falcon model"
+        "--datamorgana_file", 
+        required=True,
+        help="Path to DataMorgana JSONL file"
     )
     parser.add_argument(
-        "--qa_file", required=True,
-        help="Path to DataMorgana QA pairs file"
+        "--falcon_key", 
+        required=True,
+        help="API key for Falcon"
     )
     parser.add_argument(
-        "--n", type=float, default=0.5,
+        "--n", 
+        type=float, 
+        default=0.5,
         help="Adaptive judge bar parameter"
     )
     parser.add_argument(
         "--output", 
-        help="Path to save results (default: auto-generated with timestamp)"
+        help="Path to save evaluation results"
     )
     args = parser.parse_args()
     
-    # Create output directory
-    os.makedirs("results", exist_ok=True)
-    
-    # Generate output filename with timestamp if not provided
-    output_file = args.output
-    if not output_file:
+    # Create output directory if needed
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    else:
+        # Default output file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = f"results/datamorgana_wikipedia_falcon_{timestamp}.json"
+        os.makedirs("results", exist_ok=True)
+        args.output = f"results/datamorgana_eval_{timestamp}.json"
     
-    # Run evaluation
+    print("Evaluating DataMorgana questions using Falcon with Wikipedia retriever...")
     evaluate_datamorgana_with_wikipedia(
+        datamorgana_file=args.datamorgana_file,
         falcon_api_key=args.falcon_key,
-        datamorgana_file=args.qa_file,
         n_value=args.n,
-        output_file=output_file
+        output_file=args.output
     )
 
 
