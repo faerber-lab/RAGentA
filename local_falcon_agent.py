@@ -19,13 +19,15 @@ class LocalFalconAgent:
             device: Device to use (cuda or cpu)
             precision: Model precision (bfloat16, float16, or float32)
         """
-        # Retrieve the Hugging Face token from the environment
+        # Ensure you are retrieving the token if needed:
         token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
-        if not token:
+        if token is None:
             raise ValueError("HUGGING_FACE_HUB_TOKEN environment variable is not set.")
-
-        # Initialize the tokenizer with the authentication token
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=token)
+        
+        # Use the correct model identifier:
+        model_name = "tiiuae/Falcon3-10B-Instruct"
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=token)
+        model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=token)
         
         # Determine torch dtype based on precision
         if precision == "bfloat16" and torch.cuda.is_bf16_supported():
