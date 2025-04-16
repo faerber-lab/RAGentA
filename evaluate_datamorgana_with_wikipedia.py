@@ -149,7 +149,7 @@ def main():
     )
     parser.add_argument(
         "--falcon_model", 
-        default="tiiuae/falcon-3-10B-instruct",
+        default="tiiuae/Falcon3-10B-Instruct",
         help="Name or path of the Falcon model"
     )
     parser.add_argument(
