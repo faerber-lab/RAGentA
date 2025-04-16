@@ -10,7 +10,7 @@ class LocalFalconAgent:
     the model directly instead of making API calls.
     """
     
-    def __init__(self, model_name="tiiuae/falcon-3-10B-instruct", device="cuda", precision="bfloat16"):
+    def __init__(self, model_name="tiiuae/Falcon3-10B-Instruct", device="cuda", precision="bfloat16"):
         """
         Initialize the Falcon agent with a local model.
         
@@ -25,7 +25,7 @@ class LocalFalconAgent:
             raise ValueError("HUGGING_FACE_HUB_TOKEN environment variable is not set.")
         
         # Use the correct model identifier:
-        model_name = "tiiuae/Falcon3-10B-Instruct"
+        # model_name = "tiiuae/Falcon3-10B-Instruct"
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=token)
         model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=token)
         
