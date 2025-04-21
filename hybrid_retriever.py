@@ -4,6 +4,7 @@ from pinecone import Pinecone
 from opensearchpy import OpenSearch, AWSV4SignerAuth, RequestsHttpConnection
 from transformers import AutoModel, AutoTokenizer
 from functools import cache
+import os
 
 # AWS configuration
 AWS_PROFILE_NAME = "sigir-participant"
