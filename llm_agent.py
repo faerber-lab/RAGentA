@@ -71,7 +71,7 @@ class LLMAgent:
 
     def generate(self, prompt, max_new_tokens=256):
         """
-        Generate text using the local model.
+        Generate text using the local model with proper chat formatting.
 
         Args:
             prompt: The input prompt
@@ -80,19 +80,43 @@ class LLMAgent:
         Returns:
             Generated text as a string
         """
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        # Format as proper chat messages using the tokenizer's chat template
+        messages = [{"role": "user", "content": prompt}]
 
+        # Apply the model's chat template
+        formatted_prompt = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        # Tokenize the formatted prompt
+        model_inputs = self.tokenizer([formatted_prompt], return_tensors="pt").to(
+            self.device
+        )
+
+        # Generate the response
         with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
+            generated_ids = self.model.generate(
+                **model_inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,  # Use greedy decoding as in MAIN-RAG
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
-        response = self.tokenizer.decode(
-            outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
-        )
+        # Extract only the newly generated tokens
+        generated_ids = [
+            output_ids[len(input_ids) :]
+            for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+
+        # Decode the response
+        response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[
+            0
+        ]
+
+        # If empty response, provide a fallback
+        if not response or response.strip() == "":
+            response = "I don't have enough information to provide a specific answer."
+
         return response
 
     def get_log_probs(self, prompt, target_tokens=["Yes", "No"]):
