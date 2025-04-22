@@ -24,15 +24,12 @@ from main_rag import MAIN_RAG
 from hybrid_retriever import HybridRetriever
 
 
-def load_datamorgana_questions(file_path="datamorgana_questions.jsonl"):
-    """Load DataMorgana questions from JSONL file."""
+def load_datamorgana_questions(file_path="datamorgana_questions.json"):
+    """Load DataMorgana questions."""
     try:
-        questions = []
         with open(file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():  # Skip empty lines
-                    questions.append(json.loads(line))
-        return questions
+            data = json.load(f)
+        return data
     except FileNotFoundError:
         print(f"Error: DataMorgana questions file not found at {file_path}")
         return []
