@@ -291,10 +291,18 @@ def evaluate_results(
     return eval_results
 
 
-def visualize_evaluation_results(eval_results, output_dir="evaluation_results"):
+def visualize_evaluation_results(eval_results, output_dir):
     """Generate visualizations and summary statistics for the evaluation results."""
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Make sure the directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Rest of the function remains the same, just make sure all file paths use output_dir
+    # For example:
+    with open(os.path.join(output_dir, "summary.json"), "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, cls=NumpyEncoder)
+
+    # For the plots
+    plt.savefig(os.path.join(output_dir, "relevance_distribution.png"))
 
     # Convert to DataFrame for easier analysis
     df = pd.DataFrame(
@@ -386,10 +394,16 @@ def visualize_evaluation_results(eval_results, output_dir="evaluation_results"):
     return summary
 
 
-def save_evaluation_results(eval_results, output_file="evaluation_results.json"):
+def save_evaluation_results(eval_results, output_dir, filename="detailed_results.json"):
     """Save the detailed evaluation results to a JSON file."""
+    # Make sure output_dir exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Create full path for the output file
+    output_file = os.path.join(output_dir, filename)
+
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(eval_results, f, indent=2)
+        json.dump(eval_results, f, indent=2, cls=NumpyEncoder)
     print(f"Detailed evaluation results saved to {output_file}")
 
 
@@ -459,12 +473,10 @@ def main():
     )
 
     # Save detailed evaluation results
-    save_evaluation_results(
-        eval_results, os.path.join(args.output_dir, "detailed_results.json")
-    )
+    save_evaluation_results(eval_results, output_dir)
 
     # Generate visualizations and summary
-    summary = visualize_evaluation_results(eval_results, args.output_dir)
+    summary = visualize_evaluation_results(eval_results, output_dir)
 
     # Print summary statistics
     print("\nEvaluation Summary:")
