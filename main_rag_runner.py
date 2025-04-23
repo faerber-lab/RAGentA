@@ -35,6 +35,7 @@ def load_datamorgana_questions(file_path="datamorgana_questions.json"):
         return []
 
 
+# Only the modified part is shown - this should be integrated with your existing code
 def main():
     parser = argparse.ArgumentParser(description="MAIN-RAG with Hybrid Retrieval")
     parser.add_argument(
@@ -99,6 +100,10 @@ def main():
                 "adjusted_tau_q": debug_info["adjusted_tau_q"],
                 "filtered_count": len(debug_info["filtered_docs"]),
                 "process_time": process_time,
+                # Add filtered documents with their content for evaluation
+                "filtered_docs": [
+                    (doc, float(score)) for doc, score in debug_info["filtered_docs"]
+                ],
             }
             results.append(result)
 
@@ -112,8 +117,10 @@ def main():
         except Exception as e:
             print(f"Error processing question: {e}")
 
-    # Save results
-    output_file = f"results/main_rag_hybrid_n{args.n}_a{args.alpha}.json"
+    import datetime
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = f"results/main_rag_hybrid_n{args.n}_a{args.alpha}_{timestamp}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
