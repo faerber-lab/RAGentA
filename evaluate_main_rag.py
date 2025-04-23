@@ -264,17 +264,18 @@ def evaluate_results(
             "question": question,
             "model_answer": model_answer,
             "reference_answer": reference_answer,
-            "rouge1": rouge_scores["rouge1"],
-            "rouge2": rouge_scores["rouge2"],
-            "rougeL": rouge_scores["rougeL"],
-            # "bleu": bleu_score,
-            "relevance_score": llm_eval["relevance_score"],
-            "faithfulness_score": llm_eval["faithfulness_score"],
+            "rouge1": float(rouge_scores["rouge1"]),  # Convert to Python float
+            "rouge2": float(rouge_scores["rouge2"]),
+            "rougeL": float(rouge_scores["rougeL"]),
+            "relevance_score": int(
+                llm_eval["relevance_score"]
+            ),  # Convert to Python int
+            "faithfulness_score": int(llm_eval["faithfulness_score"]),
             "judge_reasoning": llm_eval["judge_reasoning"],
-            "tau_q": result.get("tau_q", 0),
-            "adjusted_tau_q": result.get("adjusted_tau_q", 0),
-            "filtered_count": result.get("filtered_count", 0),
-            "process_time": result.get("process_time", 0),
+            "tau_q": float(result.get("tau_q", 0)),
+            "adjusted_tau_q": float(result.get("adjusted_tau_q", 0)),
+            "filtered_count": int(result.get("filtered_count", 0)),
+            "process_time": float(result.get("process_time", 0)),
         }
 
         # Add filtered docs if available
