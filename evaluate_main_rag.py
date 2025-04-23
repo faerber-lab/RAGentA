@@ -8,15 +8,16 @@ from tqdm import tqdm
 import argparse
 from sklearn.metrics.pairwise import cosine_similarity
 from rouge_score import rouge_scorer
-import nltk
-from nltk.translate.bleu_score import sentence_bleu
-from nltk.tokenize import word_tokenize
+
+# import nltk
+# from nltk.translate.bleu_score import sentence_bleu
+# from nltk.tokenize import word_tokenize
 
 # Make sure NLTK resources are available
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt")
+# try:
+# nltk.data.find("tokenizers/punkt")
+# except LookupError:
+# nltk.download("punkt")
 
 
 class DeepseekJudge:
@@ -101,8 +102,7 @@ def compute_rouge_score(hypothesis, reference):
         "rougeL": scores["rougeL"].fmeasure,
     }
 
-
-def compute_bleu_score(hypothesis, reference):
+    # def compute_bleu_score(hypothesis, reference):
     """Compute BLEU score between model answer and reference answer."""
     hypothesis_tokens = word_tokenize(hypothesis.lower())
     reference_tokens = [word_tokenize(reference.lower())]
@@ -246,7 +246,7 @@ def evaluate_results(
 
         # Compute automatic metrics
         rouge_scores = compute_rouge_score(model_answer, reference_answer)
-        bleu_score = compute_bleu_score(model_answer, reference_answer)
+        # bleu_score = compute_bleu_score(model_answer, reference_answer)
 
         # Perform LLM-based evaluation
         llm_eval = auto_evaluate_with_llm(
@@ -267,7 +267,7 @@ def evaluate_results(
             "rouge1": rouge_scores["rouge1"],
             "rouge2": rouge_scores["rouge2"],
             "rougeL": rouge_scores["rougeL"],
-            "bleu": bleu_score,
+            # "bleu": bleu_score,
             "relevance_score": llm_eval["relevance_score"],
             "faithfulness_score": llm_eval["faithfulness_score"],
             "judge_reasoning": llm_eval["judge_reasoning"],
@@ -305,7 +305,7 @@ def visualize_evaluation_results(eval_results, output_dir="evaluation_results"):
                 "rouge1": r["rouge1"],
                 "rouge2": r["rouge2"],
                 "rougeL": r["rougeL"],
-                "bleu": r["bleu"],
+                # "bleu": r["bleu"],
                 "tau_q": r["tau_q"],
                 "adjusted_tau_q": r["adjusted_tau_q"],
                 "filtered_count": r["filtered_count"],
@@ -322,7 +322,7 @@ def visualize_evaluation_results(eval_results, output_dir="evaluation_results"):
         "avg_rouge1": df["rouge1"].mean(),
         "avg_rouge2": df["rouge2"].mean(),
         "avg_rougeL": df["rougeL"].mean(),
-        "avg_bleu": df["bleu"].mean(),
+        # "avg_bleu": df["bleu"].mean(),
         "avg_filtered_count": df["filtered_count"].mean(),
         "avg_process_time": df["process_time"].mean(),
         "count": len(df),
@@ -471,7 +471,7 @@ def main():
     print(f"Average Faithfulness Score: {summary['avg_faithfulness']:.2f}")
     print(f"Average ROUGE-1: {summary['avg_rouge1']:.2f}")
     print(f"Average ROUGE-L: {summary['avg_rougeL']:.2f}")
-    print(f"Average BLEU: {summary['avg_bleu']:.2f}")
+    # print(f"Average BLEU: {summary['avg_bleu']:.2f}")
     print(f"Average Filtered Documents: {summary['avg_filtered_count']:.2f}")
     print(f"Average Processing Time: {summary['avg_process_time']:.2f} seconds")
     print(f"Total Questions Evaluated: {summary['count']}")
