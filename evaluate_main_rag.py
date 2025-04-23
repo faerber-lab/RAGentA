@@ -299,7 +299,7 @@ def visualize_evaluation_results(eval_results, output_dir):
     # Rest of the function remains the same, just make sure all file paths use output_dir
     # For example:
     with open(os.path.join(output_dir, "summary.json"), "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, cls=NumpyEncoder)
+        json.dump(summary, f, indent=2)
 
     # For the plots
     plt.savefig(os.path.join(output_dir, "relevance_distribution.png"))
@@ -403,7 +403,7 @@ def save_evaluation_results(eval_results, output_dir, filename="detailed_results
     output_file = os.path.join(output_dir, filename)
 
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(eval_results, f, indent=2, cls=NumpyEncoder)
+        json.dump(eval_results, f, indent=2)
     print(f"Detailed evaluation results saved to {output_file}")
 
 
