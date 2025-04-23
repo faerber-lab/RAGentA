@@ -214,7 +214,7 @@ def auto_evaluate_with_llm(
 
 
 def evaluate_results(
-    results, datamorgana_questions, llm_api_url=None, llm_api_key=None
+    results, datamorgana_questions, llm_api_url=None, llm_api_key=None, local_judge=None
 ):
     """Evaluate MAIN-RAG results using both automatic metrics and LLM evaluation."""
     eval_results = []
