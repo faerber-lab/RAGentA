@@ -2,8 +2,20 @@ import numpy as np
 from tqdm import tqdm
 import re
 
+# Import the new components
+from faithfulness_judge import FaithfulnessJudge
+from citation_helper import CitationHelper
+
+
 class MAIN_RAG:
-    def __init__(self, retriever, agent_model=None, n=0.0, falcon_api_key=None, pinecone_api_key=None):
+    def __init__(
+        self,
+        retriever,
+        agent_model=None,
+        n=0.0,
+        falcon_api_key=None,
+        pinecone_api_key=None,
+    ):
         """
         MAIN-RAG framework implementation.
 
@@ -16,19 +28,23 @@ class MAIN_RAG:
         """
         self.retriever = retriever
         self.n = n  # Hyperparameter for adaptive judge bar adjustment
-        
+
         # Initialize agents based on provided parameters
         if isinstance(agent_model, str):
             if "falcon" in agent_model.lower() and falcon_api_key:
                 # Initialize Falcon agents
                 from falcon_agent import FalconAgent
+
                 self.agent1 = FalconAgent(falcon_api_key)  # Predictor
-                self.agent2 = self.agent1  # Judge (reuse the same instance to save resources)
+                self.agent2 = (
+                    self.agent1
+                )  # Judge (reuse the same instance to save resources)
                 self.agent3 = self.agent1  # Final-Predictor
                 print(f"Using Falcon agents with API for all three agent roles")
             else:
                 # Initialize local LLM agents
                 from llm_agent import LLMAgent
+
                 self.agent1 = LLMAgent(agent_model)  # Predictor
                 self.agent2 = self.agent1  # Judge
                 self.agent3 = self.agent1  # Final-Predictor
@@ -76,7 +92,23 @@ Question: {query}
 
 Answer:"""
 
-    def _create_agent3_prompt_for_multiple_choice(self, query, choices, filtered_documents):
+    def _create_agent3_prompt_with_citations(self, query, filtered_documents):
+        """Create a prompt for Agent-3 that encourages citation-friendly outputs."""
+        docs_text = "\n\n".join(
+            [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
+        )
+        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. For each claim you make, consider which document supports it. Provide a comprehensive answer that's fully supported by the documents.
+
+Documents:
+{docs_text}
+
+Question: {query}
+
+Answer the question using only information from the documents. Make sure each statement in your answer can be traced back to one of the documents. Be specific and detailed, but avoid unnecessary repetition."""
+
+    def _create_agent3_prompt_for_multiple_choice(
+        self, query, choices, filtered_documents
+    ):
         """Create prompt for Agent-3 (Final-Predictor) for multiple-choice questions."""
         docs_text = "\n\n".join(
             [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
@@ -176,7 +208,7 @@ Answer:"""
         return lines[0].strip()
 
     def answer_query(self, query, choices=None):
-        """Process a query using the MAIN-RAG framework."""
+        """Process a query using the MAIN-RAG framework (original version)."""
         print(f"Processing query: {query}")
 
         # Step 1: Retrieve documents
@@ -257,11 +289,206 @@ Answer:"""
         # Return the answer and debug information
         debug_info = {
             "tau_q": tau_q,
-            "adjusted_tau_q": adjusted_tau_q, 
+            "adjusted_tau_q": adjusted_tau_q,
             "sigma": sigma,
             "scores": scores,
             "filtered_docs": [(doc, score) for doc, score in filtered_docs],
-            "raw_answer": raw_answer
+            "raw_answer": raw_answer,
         }
+
+        return final_answer, debug_info
+
+    # New methods for the enhanced version with faithfulness checking and citations
+
+    def _retrieve_and_filter_docs(self, query):
+        """Helper method to retrieve and filter documents."""
+        # Step 1: Retrieve documents
+        print("Retrieving documents...")
+        retrieved_docs = self.retriever.retrieve(
+            query, top_k=20
+        )  # Always retrieve 20 docs as in the paper
+        print(f"Retrieved {len(retrieved_docs)} documents")
+
+        # Step 2: Agent-1 generates answers for each document
+        print("Agent-1 generating answers for each document...")
+        doc_answers = []
+        for doc in tqdm(retrieved_docs):
+            prompt = self._create_agent1_prompt(query, doc)
+            answer = self.agent1.generate(prompt)
+            doc_answers.append((doc, answer))
+
+        # Step 3: Agent-2 evaluates and scores each document
+        print("Agent-2 evaluating and scoring documents...")
+        scores = []
+        for doc, answer in tqdm(doc_answers):
+            prompt = self._create_agent2_prompt(query, doc, answer)
+            log_probs = self.agent2.get_log_probs(prompt, ["Yes", "No"])
+            score = log_probs["Yes"] - log_probs["No"]  # Key scoring mechanism
+            scores.append(score)
+
+        # Step 4: Calculate adaptive judge bar (τq)
+        tau_q = np.mean(scores)
+        sigma = np.std(scores)
+        adjusted_tau_q = tau_q - self.n * sigma  # Use the n hyperparameter here
+        print(f"Adaptive judge bar: τq={tau_q:.4f}, adjusted: {adjusted_tau_q:.4f}")
+
+        # Step 5: Filter and rank documents
+        filtered_docs = []
+        for i, (doc, _) in enumerate(doc_answers):
+            if scores[i] >= adjusted_tau_q:
+                filtered_docs.append((doc, scores[i]))
+
+        # Sort by score in descending order (crucial for performance)
+        filtered_docs.sort(key=lambda x: x[1], reverse=True)
+        print(f"Filtered to {len(filtered_docs)} documents")
+
+        return retrieved_docs, filtered_docs, doc_answers
+
+    def _generate_initial_answer(
+        self, query, docs, choices=None, use_citation_prompt=True
+    ):
+        """Generate the initial answer using Agent-3."""
+        if choices:  # Multiple choice for ARC
+            prompt = self._create_agent3_prompt_for_multiple_choice(
+                query, choices, docs
+            )
+            raw_answer = self.agent3.generate(prompt)
+            final_answer = self.extract_multiple_choice_answer(raw_answer)
+        else:  # General prompt for all other benchmarks
+            if use_citation_prompt:
+                prompt = self._create_agent3_prompt_with_citations(query, docs)
+            else:
+                prompt = self._create_agent3_prompt(query, docs)
+            raw_answer = self.agent3.generate(prompt)
+            final_answer = self.clean_answer(raw_answer)
+
+        # Make sure we never return empty answers
+        if not final_answer or final_answer.strip() == "":
+            final_answer = "no answer provided"
+
+        # Return the answer and debug information
+        debug_info = {
+            "raw_answer": raw_answer,
+        }
+
+        return {"answer": final_answer, "debug_info": debug_info}
+
+    def answer_query_with_citations(
+        self, query, choices=None, use_faithfulness_judge=True
+    ):
+        """
+        Process a query using the enhanced MAIN-RAG framework with citations and faithfulness checking.
+
+        Args:
+            query: The user's query
+            choices: List of choices for multiple-choice questions
+            use_faithfulness_judge: Whether to use the faithfulness judge
+
+        Returns:
+            The final answer with citations, and debug information
+        """
+        print(f"Processing query with citations: {query}")
+
+        # Step 1-5: Same as original MAIN-RAG (retrieve, generate answers, score, filter)
+        # These steps are identical to the original implementation
+        retrieved_docs, filtered_docs, doc_answers = self._retrieve_and_filter_docs(
+            query
+        )
+
+        # Step 6: Agent-3 generates the initial answer
+        print("Agent-3 generating initial answer...")
+        if filtered_docs:
+            docs_only = [doc for doc, _ in filtered_docs]
+            initial_answer = self._generate_initial_answer(query, docs_only, choices)
+        else:
+            # Fall back to using all documents if none pass the filter
+            print("Warning: No documents passed the filter, using all documents")
+            docs_only = [doc for doc, _ in doc_answers]
+            initial_answer = self._generate_initial_answer(query, docs_only, choices)
+
+        # If faithfulness checking is not requested, return the initial answer
+        if not use_faithfulness_judge:
+            return initial_answer["answer"], initial_answer["debug_info"]
+
+        # Step 7: Extract and add citations to the answer
+        print("Adding citations to the answer...")
+        citation_helper = CitationHelper()
+        answer_with_citations = citation_helper.extract_sentences_with_citations(
+            initial_answer["answer"], docs_only
+        )
+
+        # Step 8: Evaluate answer faithfulness using the judge
+        print("Evaluating answer faithfulness...")
+        faithfulness_judge = FaithfulnessJudge(self.agent3)  # Reuse the same agent
+        faith_results, citation_details = (
+            faithfulness_judge.evaluate_answer_with_citations(
+                query, answer_with_citations
+            )
+        )
+
+        # Step 9: Based on faithfulness evaluation, decide what to do
+        if faith_results["action"] == "keep":
+            print("Answer is faithful to the documents. Keeping as is.")
+            final_answer = citation_helper.format_answer_with_citations(
+                answer_with_citations
+            )
+        elif faith_results["action"] == "regenerate":
+            print("Regenerating answer with only valid citations...")
+            # Filter to keep only valid documents
+            valid_doc_indices = [
+                doc_idx for _, doc_idx in faith_results["valid_citations"]
+            ]
+            valid_docs = [
+                docs_only[i] for i in range(len(docs_only)) if i in valid_doc_indices
+            ]
+
+            # If we have valid documents, regenerate the answer
+            if valid_docs:
+                regenerated = self._generate_initial_answer(query, valid_docs, choices)
+                regen_with_citations = citation_helper.extract_sentences_with_citations(
+                    regenerated["answer"], valid_docs
+                )
+                final_answer = citation_helper.format_answer_with_citations(
+                    regen_with_citations
+                )
+            else:
+                # If no valid documents, keep the original answer but add a disclaimer
+                final_answer = (
+                    initial_answer["answer"]
+                    + "\n\nNote: This answer may contain information not directly supported by the retrieved documents."
+                )
+        else:  # faith_results["action"] == "use_next_docs"
+            print("Using next set of documents...")
+            # Try the next 10 documents that weren't in the top filtered set
+            used_docs = set(docs_only)
+            next_docs = []
+            for doc, _ in doc_answers:
+                if doc not in used_docs and len(next_docs) < 10:
+                    next_docs.append(doc)
+
+            if next_docs:
+                # Generate a new answer with these documents
+                new_answer = self._generate_initial_answer(query, next_docs, choices)
+                new_with_citations = citation_helper.extract_sentences_with_citations(
+                    new_answer["answer"], next_docs
+                )
+                final_answer = citation_helper.format_answer_with_citations(
+                    new_with_citations
+                )
+            else:
+                # If no more documents available, use the original but add a disclaimer
+                final_answer = (
+                    initial_answer["answer"]
+                    + "\n\nNote: The available documents may not directly address this question."
+                )
+
+        # Add faithfulness evaluation to debug info
+        debug_info = initial_answer["debug_info"]
+        debug_info.update(
+            {
+                "faithfulness_results": faith_results,
+                "citation_details": citation_details,
+            }
+        )
 
         return final_answer, debug_info

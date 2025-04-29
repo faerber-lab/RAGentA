@@ -1,4 +1,3 @@
-# main_rag_runner.py
 import os
 
 # Set cache directories
@@ -35,7 +34,6 @@ def load_datamorgana_questions(file_path="datamorgana_questions.json"):
         return []
 
 
-# Only the modified part is shown - this should be integrated with your existing code
 def main():
     parser = argparse.ArgumentParser(description="MAIN-RAG with Hybrid Retrieval")
     parser.add_argument(
@@ -58,6 +56,11 @@ def main():
         type=str,
         default="datamorgana_questions.json",
         help="File containing DataMorgana questions",
+    )
+    parser.add_argument(
+        "--use_citations",
+        action="store_true",
+        help="Use faithfulness checker and citations",
     )
     args = parser.parse_args()
 
@@ -85,8 +88,13 @@ def main():
         start_time = time.time()
 
         try:
-            # Process the query
-            answer, debug_info = main_rag.answer_query(item["question"])
+            # Process the query using either the original method or the enhanced citation method
+            if args.use_citations:
+                answer, debug_info = main_rag.answer_query_with_citations(
+                    item["question"]
+                )
+            else:
+                answer, debug_info = main_rag.answer_query(item["question"])
 
             # Calculate processing time
             process_time = time.time() - start_time
@@ -96,31 +104,51 @@ def main():
                 "question": item["question"],
                 "reference_answer": item["answer"],
                 "model_answer": answer,
-                "tau_q": debug_info["tau_q"],
-                "adjusted_tau_q": debug_info["adjusted_tau_q"],
-                "filtered_count": len(debug_info["filtered_docs"]),
+                "tau_q": debug_info.get("tau_q", 0),
+                "adjusted_tau_q": debug_info.get("adjusted_tau_q", 0),
+                "filtered_count": len(debug_info.get("filtered_docs", [])),
                 "process_time": process_time,
-                # Add filtered documents with their content for evaluation
-                "filtered_docs": [
-                    (doc, float(score)) for doc, score in debug_info["filtered_docs"]
-                ],
             }
+
+            # Add faithfulness results if available
+            if "faithfulness_results" in debug_info:
+                result["faithfulness"] = {
+                    "action": debug_info["faithfulness_results"]["action"],
+                    "valid_count": len(
+                        debug_info["faithfulness_results"]["valid_citations"]
+                    ),
+                    "invalid_count": len(
+                        debug_info["faithfulness_results"]["invalid_citations"]
+                    ),
+                    "hallucination_count": len(
+                        debug_info["faithfulness_results"]["hallucinations"]
+                    ),
+                }
+
             results.append(result)
 
             print(f"Answer: {answer}")
             print(f"Processing time: {process_time:.2f} seconds")
-            print(
-                f"Tau_q: {debug_info['tau_q']:.4f} (adjusted: {debug_info['adjusted_tau_q']:.4f})"
-            )
-            print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}")
+
+            if "tau_q" in debug_info:
+                print(
+                    f"Tau_q: {debug_info['tau_q']:.4f} (adjusted: {debug_info['adjusted_tau_q']:.4f})"
+                )
+                print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}")
+
+            if "faithfulness_results" in debug_info:
+                faith_results = debug_info["faithfulness_results"]
+                print(f"Faithfulness: {faith_results['action']}")
+                print(f"Valid citations: {len(faith_results['valid_citations'])}")
+                print(f"Invalid citations: {len(faith_results['invalid_citations'])}")
+                print(f"Hallucinations: {len(faith_results['hallucinations'])}")
 
         except Exception as e:
             print(f"Error processing question: {e}")
 
-    import datetime
-
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"results/main_rag_hybrid_n{args.n}_a{args.alpha}_{timestamp}.json"
+    # Save results
+    output_prefix = "citations_" if args.use_citations else ""
+    output_file = f"results/{output_prefix}main_rag_hybrid_n{args.n}_a{args.alpha}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
@@ -132,6 +160,20 @@ def main():
         avg_filtered = sum(r["filtered_count"] for r in results) / len(results)
         print(f"Average processing time: {avg_time:.2f} seconds")
         print(f"Average filtered documents: {avg_filtered:.1f}")
+
+        if args.use_citations and "faithfulness" in results[0]:
+            avg_valid = sum(r["faithfulness"]["valid_count"] for r in results) / len(
+                results
+            )
+            avg_invalid = sum(
+                r["faithfulness"]["invalid_count"] for r in results
+            ) / len(results)
+            avg_hallucinations = sum(
+                r["faithfulness"]["hallucination_count"] for r in results
+            ) / len(results)
+            print(f"Average valid citations: {avg_valid:.1f}")
+            print(f"Average invalid citations: {avg_invalid:.1f}")
+            print(f"Average hallucinations: {avg_hallucinations:.1f}")
 
 
 if __name__ == "__main__":
