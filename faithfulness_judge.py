@@ -36,47 +36,76 @@ class FaithfulnessJudge:
 
         citation_evaluations = []
 
-        # Handle the case where there are no citations
-        if not answer_with_citations["citations"]:
+        # Make sure we have citations to evaluate
+        if (
+            not answer_with_citations
+            or "citations" not in answer_with_citations
+            or not answer_with_citations["citations"]
+        ):
             results["action"] = "use_next_docs"
             results["feedback"] = "No citations found. Try using different documents."
             return results, citation_evaluations
 
         # Evaluate each citation
-        for citation_text, doc_index, doc_content in answer_with_citations["citations"]:
+        for citation_tuple in answer_with_citations["citations"]:
+            # Make sure citation tuple has the expected structure
+            if len(citation_tuple) < 3:
+                continue
+
+            citation_text, doc_index, doc_content = citation_tuple
+
             # Create smaller prompts to stay within token limits
             if len(doc_content) > 1500:
                 doc_content = doc_content[:1500] + "..."
 
-            qc_evaluation = self._evaluate_question_citation(query, doc_content)
-            cp_evaluation = self._evaluate_citation_prediction(
-                citation_text, doc_content
-            )
+            # Skip very short or empty citations
+            if not citation_text or len(citation_text.split()) < 3:
+                continue
 
-            citation_evaluations.append(
-                {
-                    "citation_text": citation_text,
-                    "doc_index": doc_index,
-                    "qc_score": qc_evaluation["score"],
-                    "qc_reason": qc_evaluation["reason"],
-                    "cp_score": cp_evaluation["score"],
-                    "cp_reason": cp_evaluation["reason"],
-                }
-            )
-
-            # Categorize the citation based on evaluations
-            if qc_evaluation["score"] > 0.6 and cp_evaluation["score"] > 0.6:
-                results["valid_citations"].append((citation_text, doc_index))
-            elif qc_evaluation["score"] > 0.6 and cp_evaluation["score"] <= 0.6:
-                # Document is relevant but answer isn't faithful to it
-                results["hallucinations"].append(
-                    (citation_text, doc_index, cp_evaluation["reason"])
+            try:
+                qc_evaluation = self._evaluate_question_citation(query, doc_content)
+                cp_evaluation = self._evaluate_citation_prediction(
+                    citation_text, doc_content
                 )
-            else:
-                # Document isn't relevant enough
+
+                citation_evaluations.append(
+                    {
+                        "citation_text": citation_text,
+                        "doc_index": doc_index,
+                        "qc_score": qc_evaluation["score"],
+                        "qc_reason": qc_evaluation["reason"],
+                        "cp_score": cp_evaluation["score"],
+                        "cp_reason": cp_evaluation["reason"],
+                    }
+                )
+
+                # Categorize the citation based on evaluations
+                if qc_evaluation["score"] > 0.6 and cp_evaluation["score"] > 0.6:
+                    results["valid_citations"].append((citation_text, doc_index))
+                elif qc_evaluation["score"] > 0.6 and cp_evaluation["score"] <= 0.6:
+                    # Document is relevant but answer isn't faithful to it
+                    results["hallucinations"].append(
+                        (citation_text, doc_index, cp_evaluation["reason"])
+                    )
+                else:
+                    # Document isn't relevant enough
+                    results["invalid_citations"].append(
+                        (citation_text, doc_index, qc_evaluation["reason"])
+                    )
+            except Exception as e:
+                print(f"Error evaluating citation: {str(e)}")
+                # If evaluation fails, consider it invalid
                 results["invalid_citations"].append(
-                    (citation_text, doc_index, qc_evaluation["reason"])
+                    (citation_text, doc_index, f"Evaluation error: {str(e)}")
                 )
+
+        # If we have no evaluations, default to keeping the answer
+        if not citation_evaluations:
+            results["action"] = "keep"
+            results["feedback"] = (
+                "Unable to evaluate citations. Keeping original answer."
+            )
+            return results, citation_evaluations
 
         # Determine the overall action to take
         if len(results["valid_citations"]) > len(results["citations"]) / 2:

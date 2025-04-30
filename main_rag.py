@@ -422,6 +422,8 @@ Answer:"""
         # Step 8: Evaluate answer faithfulness using the judge
         print("Evaluating answer faithfulness...")
         faithfulness_judge = FaithfulnessJudge(self.agent3)  # Reuse the same agent
+        # This is a partial code snippet to update the try-except block in answer_query_with_citations
+        # Locate this section in your main_rag.py file and replace it
         try:
             faith_results, citation_details = (
                 faithfulness_judge.evaluate_answer_with_citations(
@@ -443,7 +445,7 @@ Answer:"""
                 print("Regenerating answer with only valid citations...")
                 # Filter to keep only valid documents
                 valid_doc_indices = [
-                    doc_idx for _, doc_idx in faith_results["valid_citations"]
+                    doc_idx for _, doc_idx in faith_results.get("valid_citations", [])
                 ]
                 if valid_doc_indices:
                     valid_docs = [
@@ -516,9 +518,10 @@ Answer:"""
         except Exception as e:
             # If faithfulness checking fails, fall back to simple citation formatting
             print(f"Faithfulness checking failed: {e}")
+            import traceback
+
+            traceback.print_exc()  # Print the full error for debugging
             final_answer = self.citation_helper.format_answer_with_citations(
                 answer_with_citations
             )
             debug_info["faithfulness_error"] = str(e)
-
-        return final_answer, debug_info
