@@ -100,14 +100,18 @@ Answer:"""
         docs_text = "\n\n".join(
             [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
         )
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. For each claim you make in your answer, try to base it on specific information from the documents.
+        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. For each statement you make in your answer, try to base it on specific information from the documents.
 
 Documents:
 {docs_text}
 
 Question: {query}
 
-Provide a comprehensive answer that's fully supported by the documents. Make each statement specific and detailed, drawing directly from the documents. Your answer should be focused, concise, and directly address the question."""
+Provide a comprehensive answer that's supported by the documents. Make each statement specific and detailed, drawing directly from the documents. Your answer should be focused, directly addressing the question, and use information from the documents whenever possible.
+
+If the documents contain conflicting information, you can mention this. If the documents don't fully address all aspects of the question, you can indicate what information is missing.
+
+Remember that your answer will be checked for faithfulness to the documents, so be careful not to add information that isn't supported by them."""
 
     def _create_agent3_prompt_for_multiple_choice(
         self, query, choices, filtered_documents
@@ -302,7 +306,7 @@ Answer:"""
         return final_answer, debug_info
 
     def answer_query_with_citations(
-        self, query, choices=None, use_faithfulness_judge=True
+        self, query, choices=None, use_faithfulness_judge=True, verbose_logging=False
     ):
         """
         Process a query using the enhanced MAIN-RAG framework with citations and faithfulness checking.
@@ -311,11 +315,17 @@ Answer:"""
             query: The user's query
             choices: List of choices for multiple-choice questions
             use_faithfulness_judge: Whether to use the faithfulness judge
+            verbose_logging: Whether to print detailed logs
 
         Returns:
             The final answer with citations, and debug information
         """
-        print(f"Processing query with citations: {query}")
+        if verbose_logging:
+            print("\n" + "=" * 80)
+            print(f"PROCESSING QUERY WITH CITATIONS: {query}")
+            print("=" * 80)
+        else:
+            print(f"Processing query with citations: {query}")
 
         # Step 1: Retrieve documents
         print("Retrieving documents...")
@@ -414,6 +424,12 @@ Answer:"""
                     initial_answer, docs_only
                 )
             )
+
+            if verbose_logging:
+                print(
+                    f"Extracted {len(answer_with_citations['citations'])} citations from answer"
+                )
+
         except Exception as e:
             print(f"Citation extraction failed: {e}")
             import traceback
@@ -423,7 +439,7 @@ Answer:"""
             return initial_answer, debug_info
 
         # If we don't want or can't do faithfulness checking, just format and return
-        if not use_faithfulness_judge or not answer_with_citations["citations"]:
+        if not use_faithfulness_judge:
             try:
                 final_answer = self.citation_helper.format_answer_with_citations(
                     answer_with_citations
@@ -434,13 +450,24 @@ Answer:"""
                 # If formatting fails, return the initial answer
                 return initial_answer, debug_info
 
+        # If there are no citations to check, just format and return
+        if not answer_with_citations["citations"]:
+            try:
+                final_answer = self.citation_helper.format_answer_with_citations(
+                    answer_with_citations
+                )
+                return final_answer, debug_info
+            except Exception as e:
+                print(f"Citation formatting failed: {e}")
+                return initial_answer, debug_info
+
         # Step 8: Evaluate answer faithfulness using the judge
         print("Evaluating answer faithfulness...")
         faithfulness_judge = FaithfulnessJudge(self.agent3)  # Reuse the same agent
         try:
             faith_results, citation_details = (
                 faithfulness_judge.evaluate_answer_with_citations(
-                    query, answer_with_citations
+                    query, answer_with_citations, verbose_logging=verbose_logging
                 )
             )
 
@@ -468,7 +495,9 @@ Answer:"""
                     valid_docs = []
 
                 # If we have valid documents, regenerate the answer
-                if valid_docs:
+                if (
+                    valid_docs and len(valid_docs) >= 2
+                ):  # Need at least a couple docs for a good answer
                     prompt = self._create_agent3_prompt_with_citations(
                         query, valid_docs
                     )
@@ -484,11 +513,30 @@ Answer:"""
                             regenerated_answer, valid_docs
                         )
                     )
-                    final_answer = self.citation_helper.format_answer_with_citations(
-                        regen_with_citations
-                    )
+
+                    # Check if regenerated answer has citations
+                    if regen_with_citations["citations"]:
+                        final_answer = (
+                            self.citation_helper.format_answer_with_citations(
+                                regen_with_citations
+                            )
+                        )
+                    else:
+                        # If regenerated answer has no citations, keep original answer
+                        print(
+                            "Regenerated answer has no citations. Keeping original with disclaimer."
+                        )
+                        final_answer = (
+                            self.citation_helper.format_answer_with_citations(
+                                answer_with_citations
+                            )
+                        )
+                        final_answer += "\n\nNote: Some statements may not be fully supported by the source documents."
                 else:
                     # If no valid documents, keep the original answer but add a disclaimer
+                    print(
+                        "No valid documents to regenerate from. Keeping original with disclaimer."
+                    )
                     final_answer = self.citation_helper.format_answer_with_citations(
                         answer_with_citations
                     )
@@ -504,7 +552,9 @@ Answer:"""
                     if doc not in used_docs and len(next_docs) < 10:
                         next_docs.append(doc)
 
-                if next_docs:
+                if (
+                    next_docs and len(next_docs) >= 3
+                ):  # Need at least a few docs for a good answer
                     # Generate a new answer with these documents
                     prompt = self._create_agent3_prompt_with_citations(query, next_docs)
                     new_raw_answer = self.agent3.generate(prompt)
@@ -519,11 +569,42 @@ Answer:"""
                             new_answer, next_docs
                         )
                     )
-                    final_answer = self.citation_helper.format_answer_with_citations(
-                        new_with_citations
-                    )
+
+                    # Check if new answer has citations
+                    if new_with_citations["citations"]:
+                        final_answer = (
+                            self.citation_helper.format_answer_with_citations(
+                                new_with_citations
+                            )
+                        )
+                    else:
+                        # If new answer has no citations but seems informative
+                        # (more than a generic "no information" response)
+                        if (
+                            len(new_answer.split()) > 30
+                            and "sorry" not in new_answer.lower()
+                            and "cannot" not in new_answer.lower()
+                        ):
+                            final_answer = (
+                                new_answer
+                                + "\n\nNote: No specific source documents could be reliably cited for this information."
+                            )
+                        else:
+                            # If new answer is just a "no information" response, keep original
+                            print(
+                                "Alternative documents didn't yield a better answer. Keeping original."
+                            )
+                            final_answer = (
+                                self.citation_helper.format_answer_with_citations(
+                                    answer_with_citations
+                                )
+                            )
+                            final_answer += "\n\nNote: Supporting evidence for some statements may be limited."
                 else:
                     # If no more documents available, use the original but add a disclaimer
+                    print(
+                        "No suitable alternative documents available. Keeping original answer with disclaimer."
+                    )
                     final_answer = self.citation_helper.format_answer_with_citations(
                         answer_with_citations
                     )
@@ -539,9 +620,7 @@ Answer:"""
                     answer_with_citations
                 )
             except:
-                # If even formatting fails, return the initial answer
                 final_answer = initial_answer
             debug_info["faithfulness_error"] = str(e)
 
-        # Always ensure we return a tuple of (answer, debug_info)
         return final_answer, debug_info

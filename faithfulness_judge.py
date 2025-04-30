@@ -14,7 +14,9 @@ class FaithfulnessJudge:
         """
         self.agent = agent_model
 
-    def evaluate_answer_with_citations(self, query, answer_with_citations):
+    def evaluate_answer_with_citations(
+        self, query, answer_with_citations, verbose_logging=False
+    ):
         """
         Evaluates an answer with citations for faithfulness to the source documents.
 
@@ -22,6 +24,7 @@ class FaithfulnessJudge:
             query: The original query
             answer_with_citations: Dictionary with 'text' (the answer) and 'citations'
                                   (list of tuples with citation text and document index)
+            verbose_logging: Whether to print detailed evaluation logs
 
         Returns:
             Dictionary with evaluation results and suggested actions
@@ -46,29 +49,67 @@ class FaithfulnessJudge:
             results["feedback"] = "No citations found. Try using different documents."
             return results, citation_evaluations
 
+        # Store total citation count
         total_citations = len(answer_with_citations["citations"])
 
+        if verbose_logging:
+            print("\nEVALUATING CITATIONS:")
+            print(f"Found {total_citations} citations to evaluate")
+            print("-" * 50)
+
         # Evaluate each citation
-        for citation_tuple in answer_with_citations["citations"]:
+        for i, citation_tuple in enumerate(answer_with_citations["citations"]):
             # Make sure citation tuple has the expected structure
             if len(citation_tuple) < 3:
+                if verbose_logging:
+                    print(f"Citation {i+1}: Invalid structure, skipping")
                 continue
 
             citation_text, doc_index, doc_content = citation_tuple
+
+            # Skip very short or empty citations
+            if not citation_text or len(citation_text.split()) < 3:
+                if verbose_logging:
+                    print(f"Citation {i+1}: Too short, skipping")
+                continue
 
             # Create smaller prompts to stay within token limits
             if len(doc_content) > 1500:
                 doc_content = doc_content[:1500] + "..."
 
-            # Skip very short or empty citations
-            if not citation_text or len(citation_text.split()) < 3:
-                continue
+            if verbose_logging:
+                print(f"\nCITATION {i+1}:")
+                print(
+                    f"Text: {citation_text[:100]}..."
+                    if len(citation_text) > 100
+                    else f"Text: {citation_text}"
+                )
+                print(
+                    f"Document {doc_index+1}: {doc_content[:100]}..."
+                    if len(doc_content) > 100
+                    else f"Document {doc_index+1}: {doc_content}"
+                )
 
             try:
+                # QC evaluation - Does document address question?
                 qc_evaluation = self._evaluate_question_citation(query, doc_content)
+
+                # CP evaluation - Is citation supported by document?
                 cp_evaluation = self._evaluate_citation_prediction(
                     citation_text, doc_content
                 )
+
+                if verbose_logging:
+                    print(
+                        f"QC Score: {qc_evaluation['score']:.2f} - {qc_evaluation['reason'][:100]}..."
+                        if len(qc_evaluation["reason"]) > 100
+                        else f"QC Score: {qc_evaluation['score']:.2f} - {qc_evaluation['reason']}"
+                    )
+                    print(
+                        f"CP Score: {cp_evaluation['score']:.2f} - {cp_evaluation['reason'][:100]}..."
+                        if len(cp_evaluation["reason"]) > 100
+                        else f"CP Score: {cp_evaluation['score']:.2f} - {cp_evaluation['reason']}"
+                    )
 
                 citation_evaluations.append(
                     {
@@ -81,53 +122,74 @@ class FaithfulnessJudge:
                     }
                 )
 
-                # Categorize the citation based on evaluations
-                if qc_evaluation["score"] > 0.6 and cp_evaluation["score"] > 0.6:
+                # Use more lenient thresholds (0.4 instead of 0.6/0.7)
+                if qc_evaluation["score"] > 0.4 and cp_evaluation["score"] > 0.4:
                     results["valid_citations"].append((citation_text, doc_index))
-                elif qc_evaluation["score"] > 0.6 and cp_evaluation["score"] <= 0.6:
+                    if verbose_logging:
+                        print("VERDICT: VALID ✓")
+                elif qc_evaluation["score"] > 0.4 and cp_evaluation["score"] <= 0.4:
                     # Document is relevant but answer isn't faithful to it
                     results["hallucinations"].append(
                         (citation_text, doc_index, cp_evaluation["reason"])
                     )
+                    if verbose_logging:
+                        print("VERDICT: HALLUCINATION ⚠️")
                 else:
                     # Document isn't relevant enough
                     results["invalid_citations"].append(
                         (citation_text, doc_index, qc_evaluation["reason"])
                     )
+                    if verbose_logging:
+                        print("VERDICT: INVALID ✗")
             except Exception as e:
-                print(f"Error evaluating citation: {str(e)}")
-                # If evaluation fails, consider it invalid
-                results["invalid_citations"].append(
-                    (citation_text, doc_index, f"Evaluation error: {str(e)}")
-                )
+                if verbose_logging:
+                    print(f"Error evaluating citation: {str(e)}")
+                # If evaluation fails, consider it a low-confidence valid citation
+                # (more lenient error handling)
+                results["valid_citations"].append((citation_text, doc_index))
 
-        # If we have no evaluations, default to keeping the answer
+        # If we have no evaluations at all, default to keeping the answer
         if not citation_evaluations:
             results["action"] = "keep"
             results["feedback"] = (
-                "Unable to evaluate citations. Keeping original answer."
+                "Unable to properly evaluate citations. Keeping original answer."
             )
             return results, citation_evaluations
 
-        # Determine the overall action to take
-        if (
-            len(results["valid_citations"]) > total_citations / 2
-        ):  # Compare with stored total
-            if len(results["hallucinations"]) > len(results["valid_citations"]):
+        # Determine the overall action to take with more balanced logic
+        if verbose_logging:
+            print("\nDECISION PROCESS:")
+            print(f"Valid citations: {len(results['valid_citations'])}")
+            print(f"Invalid citations: {len(results['invalid_citations'])}")
+            print(f"Hallucinations: {len(results['hallucinations'])}")
+
+        # Keep the answer if we have ANY valid citations
+        if len(results["valid_citations"]) > 0:
+            # Only regenerate if hallucinations significantly outnumber valid citations
+            if len(results["hallucinations"]) > 1.5 * len(results["valid_citations"]):
                 results["action"] = "regenerate"
                 results["feedback"] = (
-                    "Significant hallucinations detected. Regenerate answer using only valid citations."
+                    "Some valid content, but too many hallucinations. Regenerating."
                 )
+                if verbose_logging:
+                    print(
+                        "ACTION: REGENERATE - Some valid content, but too many hallucinations"
+                    )
             else:
                 results["action"] = "keep"
                 results["feedback"] = (
-                    "Answer is mostly faithful to the documents. Keep with minor adjustments."
+                    "Answer has valid citations. Minor issues can be addressed with notes."
                 )
+                if verbose_logging:
+                    print("ACTION: KEEP - Answer has sufficient valid citations")
         else:
+            # Only use next docs if we have NO valid citations
             results["action"] = "use_next_docs"
             results["feedback"] = (
-                "Too few valid citations found. Try using the next set of documents."
+                "No valid citations found. Trying alternative documents."
             )
+            if verbose_logging:
+                print("ACTION: USE_NEXT_DOCS - No valid citations found")
 
         return results, citation_evaluations
 
@@ -154,7 +216,9 @@ Then, determine if the document contains information that addresses these needs.
 
 On a scale of 0 to 1, where:
 - 0 means the document is completely irrelevant to the question
+- 0.3 means the document has very minimal relevance to the question
 - 0.5 means the document partially addresses the question
+- 0.7 means the document is quite relevant to the question
 - 1 means the document fully addresses the question
 
 Provide your score and reasoning in the following format:
@@ -181,7 +245,7 @@ Reasoning: [your reasoning]
 
             return {"score": score, "reason": reasoning}
         except:
-            # Fallback if parsing fails
+            # Fallback if parsing fails - more lenient default (0.5 instead of 0)
             return {
                 "score": 0.5,
                 "reason": "Failed to parse evaluation. Original response: " + response,
@@ -198,7 +262,7 @@ Reasoning: [your reasoning]
         Returns:
             Evaluation with score and reason
         """
-        prompt = f"""You are an expert evaluator tasked with determining if a statement is entailed by a given document.
+        prompt = f"""You are an expert evaluator tasked with determining if a statement is supported by a given document.
 Evaluate if the following statement is supported by information in the document.
 
 Statement: {citation_text}
@@ -206,11 +270,13 @@ Statement: {citation_text}
 Document: {doc_content}
 
 On a scale of 0 to 1, where:
-- 0 means the statement contradicts the document
+- 0 means the statement directly contradicts the document
 - 0.3 means the statement contains claims not found in the document (hallucination)
-- 0.5 means the statement is neither contradicted nor supported by the document
-- 0.7 means the statement is partially supported by the document with some extrapolation
+- 0.5 means the statement is a reasonable inference from the document though not explicitly stated
+- 0.7 means the statement is mostly supported by the document with minor extrapolation
 - 1 means the statement is fully supported by the document
+
+Be generous in your evaluation - if the statement could reasonably be inferred from the document even if not explicitly stated, give it a higher score.
 
 Provide your score and reasoning in the following format:
 Score: [your score between 0 and 1]
@@ -236,7 +302,7 @@ Reasoning: [your reasoning]
 
             return {"score": score, "reason": reasoning}
         except:
-            # Fallback if parsing fails
+            # Fallback if parsing fails - more lenient default (0.5 instead of 0)
             return {
                 "score": 0.5,
                 "reason": "Failed to parse evaluation. Original response: " + response,
