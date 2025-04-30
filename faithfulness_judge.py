@@ -36,8 +36,18 @@ class FaithfulnessJudge:
 
         citation_evaluations = []
 
+        # Handle the case where there are no citations
+        if not answer_with_citations["citations"]:
+            results["action"] = "use_next_docs"
+            results["feedback"] = "No citations found. Try using different documents."
+            return results, citation_evaluations
+
         # Evaluate each citation
         for citation_text, doc_index, doc_content in answer_with_citations["citations"]:
+            # Create smaller prompts to stay within token limits
+            if len(doc_content) > 1500:
+                doc_content = doc_content[:1500] + "..."
+
             qc_evaluation = self._evaluate_question_citation(query, doc_content)
             cp_evaluation = self._evaluate_citation_prediction(
                 citation_text, doc_content
@@ -55,9 +65,9 @@ class FaithfulnessJudge:
             )
 
             # Categorize the citation based on evaluations
-            if qc_evaluation["score"] > 0.7 and cp_evaluation["score"] > 0.7:
+            if qc_evaluation["score"] > 0.6 and cp_evaluation["score"] > 0.6:
                 results["valid_citations"].append((citation_text, doc_index))
-            elif qc_evaluation["score"] > 0.7 and cp_evaluation["score"] <= 0.7:
+            elif qc_evaluation["score"] > 0.6 and cp_evaluation["score"] <= 0.6:
                 # Document is relevant but answer isn't faithful to it
                 results["hallucinations"].append(
                     (citation_text, doc_index, cp_evaluation["reason"])
@@ -69,7 +79,7 @@ class FaithfulnessJudge:
                 )
 
         # Determine the overall action to take
-        if len(results["valid_citations"]) > 0:
+        if len(results["valid_citations"]) > len(results["citations"]) / 2:
             if len(results["hallucinations"]) > len(results["valid_citations"]):
                 results["action"] = "regenerate"
                 results["feedback"] = (
@@ -83,7 +93,7 @@ class FaithfulnessJudge:
         else:
             results["action"] = "use_next_docs"
             results["feedback"] = (
-                "No valid citations found. Try using the next set of documents."
+                "Too few valid citations found. Try using the next set of documents."
             )
 
         return results, citation_evaluations

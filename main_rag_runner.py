@@ -1,3 +1,4 @@
+# main_rag_runner.py
 import os
 
 # Set cache directories
@@ -16,6 +17,7 @@ os.makedirs(os.environ["TORCH_HOME"], exist_ok=True)
 import argparse
 import json
 import time
+import datetime
 from tqdm import tqdm
 
 # Import our components
@@ -30,6 +32,18 @@ def load_datamorgana_questions(file_path="datamorgana_questions.json"):
             data = json.load(f)
         return data
     except FileNotFoundError:
+        # Try loading as JSONL if JSON fails
+        try:
+            data = []
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        data.append(json.loads(line))
+            if data:
+                return data
+        except:
+            pass
+
         print(f"Error: DataMorgana questions file not found at {file_path}")
         return []
 
@@ -54,13 +68,21 @@ def main():
     parser.add_argument(
         "--data_file",
         type=str,
-        default="datamorgana_questions.json",
+        default="datamorgana_questions.jsonl",
         help="File containing DataMorgana questions",
     )
     parser.add_argument(
         "--use_citations",
         action="store_true",
-        help="Use faithfulness checker and citations",
+        help="Use the citation-based answer generation with faithfulness checking",
+    )
+    parser.add_argument(
+        "--skip_faithfulness",
+        action="store_true",
+        help="Skip faithfulness checking when using citations",
+    )
+    parser.add_argument(
+        "--output_prefix", type=str, default="", help="Prefix for the output file name"
     )
     args = parser.parse_args()
 
@@ -91,7 +113,9 @@ def main():
             # Process the query using either the original method or the enhanced citation method
             if args.use_citations:
                 answer, debug_info = main_rag.answer_query_with_citations(
-                    item["question"]
+                    item["question"],
+                    choices=None,
+                    use_faithfulness_judge=not args.skip_faithfulness,
                 )
             else:
                 answer, debug_info = main_rag.answer_query(item["question"])
@@ -102,7 +126,7 @@ def main():
             # Save result
             result = {
                 "question": item["question"],
-                "reference_answer": item["answer"],
+                "reference_answer": item.get("answer", ""),
                 "model_answer": answer,
                 "tau_q": debug_info.get("tau_q", 0),
                 "adjusted_tau_q": debug_info.get("adjusted_tau_q", 0),
@@ -110,7 +134,7 @@ def main():
                 "process_time": process_time,
             }
 
-            # Add faithfulness results if available
+            # Add citation info if available
             if "faithfulness_results" in debug_info:
                 result["faithfulness"] = {
                     "action": debug_info["faithfulness_results"]["action"],
@@ -123,32 +147,44 @@ def main():
                     "hallucination_count": len(
                         debug_info["faithfulness_results"]["hallucinations"]
                     ),
+                    "feedback": debug_info["faithfulness_results"]["feedback"],
                 }
 
             results.append(result)
 
             print(f"Answer: {answer}")
             print(f"Processing time: {process_time:.2f} seconds")
+            print(
+                f"Tau_q: {debug_info.get('tau_q', 0):.4f} (adjusted: {debug_info.get('adjusted_tau_q', 0):.4f})"
+            )
+            print(
+                f"Filtered docs: {len(debug_info.get('filtered_docs', []))}/{args.top_k}"
+            )
 
-            if "tau_q" in debug_info:
-                print(
-                    f"Tau_q: {debug_info['tau_q']:.4f} (adjusted: {debug_info['adjusted_tau_q']:.4f})"
-                )
-                print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}")
-
+            # Print faithfulness info if available
             if "faithfulness_results" in debug_info:
                 faith_results = debug_info["faithfulness_results"]
-                print(f"Faithfulness: {faith_results['action']}")
+                print(f"Faithfulness action: {faith_results['action']}")
                 print(f"Valid citations: {len(faith_results['valid_citations'])}")
                 print(f"Invalid citations: {len(faith_results['invalid_citations'])}")
                 print(f"Hallucinations: {len(faith_results['hallucinations'])}")
 
         except Exception as e:
             print(f"Error processing question: {e}")
+            import traceback
 
-    # Save results
-    output_prefix = "citations_" if args.use_citations else ""
-    output_file = f"results/{output_prefix}main_rag_hybrid_n{args.n}_a{args.alpha}.json"
+            traceback.print_exc()
+
+    # Generate timestamp for the output file
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Create output filename with prefix and indicators
+    citation_indicator = "with_citations" if args.use_citations else "standard"
+    if args.use_citations and args.skip_faithfulness:
+        citation_indicator += "_no_faithfulness"
+
+    output_file = f"results/{args.output_prefix}main_rag_{citation_indicator}_n{args.n}_a{args.alpha}_{timestamp}.json"
+
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
@@ -161,19 +197,32 @@ def main():
         print(f"Average processing time: {avg_time:.2f} seconds")
         print(f"Average filtered documents: {avg_filtered:.1f}")
 
-        if args.use_citations and "faithfulness" in results[0]:
-            avg_valid = sum(r["faithfulness"]["valid_count"] for r in results) / len(
-                results
-            )
+        # Print faithfulness statistics if available
+        faith_results = [r for r in results if "faithfulness" in r]
+        if faith_results:
+            avg_valid = sum(
+                r["faithfulness"]["valid_count"] for r in faith_results
+            ) / len(faith_results)
             avg_invalid = sum(
-                r["faithfulness"]["invalid_count"] for r in results
-            ) / len(results)
+                r["faithfulness"]["invalid_count"] for r in faith_results
+            ) / len(faith_results)
             avg_hallucinations = sum(
-                r["faithfulness"]["hallucination_count"] for r in results
-            ) / len(results)
+                r["faithfulness"]["hallucination_count"] for r in faith_results
+            ) / len(faith_results)
+
             print(f"Average valid citations: {avg_valid:.1f}")
             print(f"Average invalid citations: {avg_invalid:.1f}")
             print(f"Average hallucinations: {avg_hallucinations:.1f}")
+
+            # Count faithfulness actions
+            actions = {}
+            for r in faith_results:
+                action = r["faithfulness"]["action"]
+                actions[action] = actions.get(action, 0) + 1
+
+            print("Faithfulness actions:")
+            for action, count in actions.items():
+                print(f"  {action}: {count} ({count/len(faith_results)*100:.1f}%)")
 
 
 if __name__ == "__main__":
