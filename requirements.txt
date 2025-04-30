@@ -12,3 +12,4 @@ opensearch-py==2.8.0
 sentence-transformers
 tqdm
 nltk
+accelerate
