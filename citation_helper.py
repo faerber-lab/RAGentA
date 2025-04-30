@@ -4,12 +4,11 @@ Helper class for extracting and formatting citations in RAG-generated answers.
 
 import re
 import nltk
-from nltk.tokenize import sent_tokenize
 
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt")
+# Explicitly download the required NLTK data
+nltk.download("punkt")
+
+from nltk.tokenize import sent_tokenize
 
 
 class CitationHelper:
@@ -30,7 +29,14 @@ class CitationHelper:
             (sentence, doc_index, document_content)
         """
         # Tokenize the answer into sentences
-        sentences = sent_tokenize(answer)
+        try:
+            sentences = sent_tokenize(answer)
+        except LookupError:
+            # Fallback if NLTK tokenization fails
+            print(
+                "Warning: NLTK tokenization failed. Using simple split-based tokenization."
+            )
+            sentences = self._simple_sentence_tokenize(answer)
 
         citations = []
         for i, sentence in enumerate(sentences):
@@ -46,6 +52,12 @@ class CitationHelper:
                 citations.append((sentence, doc_index, documents[doc_index]))
 
         return {"text": answer, "citations": citations}
+
+    def _simple_sentence_tokenize(self, text):
+        """Simple sentence tokenization as a fallback."""
+        # Split on common sentence-ending punctuation followed by space and capital letter
+        sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text)
+        return sentences
 
     def _find_best_match(self, sentence, documents):
         """
