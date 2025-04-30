@@ -46,6 +46,8 @@ class FaithfulnessJudge:
             results["feedback"] = "No citations found. Try using different documents."
             return results, citation_evaluations
 
+        total_citations = len(answer_with_citations["citations"])
+
         # Evaluate each citation
         for citation_tuple in answer_with_citations["citations"]:
             # Make sure citation tuple has the expected structure
@@ -108,7 +110,9 @@ class FaithfulnessJudge:
             return results, citation_evaluations
 
         # Determine the overall action to take
-        if len(results["valid_citations"]) > len(results["citations"]) / 2:
+        if (
+            len(results["valid_citations"]) > total_citations / 2
+        ):  # Compare with stored total
             if len(results["hallucinations"]) > len(results["valid_citations"]):
                 results["action"] = "regenerate"
                 results["feedback"] = (

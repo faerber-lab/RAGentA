@@ -408,22 +408,35 @@ Answer:"""
 
         # Step 7: Extract and add citations to the answer
         print("Adding citations to the answer...")
-        answer_with_citations = self.citation_helper.extract_sentences_with_citations(
-            initial_answer, docs_only
-        )
+        try:
+            answer_with_citations = (
+                self.citation_helper.extract_sentences_with_citations(
+                    initial_answer, docs_only
+                )
+            )
+        except Exception as e:
+            print(f"Citation extraction failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            # If citation extraction fails, return the initial answer without citations
+            return initial_answer, debug_info
 
         # If we don't want or can't do faithfulness checking, just format and return
         if not use_faithfulness_judge or not answer_with_citations["citations"]:
-            final_answer = self.citation_helper.format_answer_with_citations(
-                answer_with_citations
-            )
-            return final_answer, debug_info
+            try:
+                final_answer = self.citation_helper.format_answer_with_citations(
+                    answer_with_citations
+                )
+                return final_answer, debug_info
+            except Exception as e:
+                print(f"Citation formatting failed: {e}")
+                # If formatting fails, return the initial answer
+                return initial_answer, debug_info
 
         # Step 8: Evaluate answer faithfulness using the judge
         print("Evaluating answer faithfulness...")
         faithfulness_judge = FaithfulnessJudge(self.agent3)  # Reuse the same agent
-        # This is a partial code snippet to update the try-except block in answer_query_with_citations
-        # Locate this section in your main_rag.py file and replace it
         try:
             faith_results, citation_details = (
                 faithfulness_judge.evaluate_answer_with_citations(
@@ -520,8 +533,15 @@ Answer:"""
             print(f"Faithfulness checking failed: {e}")
             import traceback
 
-            traceback.print_exc()  # Print the full error for debugging
-            final_answer = self.citation_helper.format_answer_with_citations(
-                answer_with_citations
-            )
+            traceback.print_exc()
+            try:
+                final_answer = self.citation_helper.format_answer_with_citations(
+                    answer_with_citations
+                )
+            except:
+                # If even formatting fails, return the initial answer
+                final_answer = initial_answer
             debug_info["faithfulness_error"] = str(e)
+
+        # Always ensure we return a tuple of (answer, debug_info)
+        return final_answer, debug_info
