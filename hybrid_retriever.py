@@ -3,7 +3,6 @@ import boto3
 from pinecone import Pinecone
 from opensearchpy import OpenSearch, AWSV4SignerAuth, RequestsHttpConnection
 from transformers import AutoModel, AutoTokenizer
-from functools import cache
 
 # AWS configuration
 AWS_PROFILE_NAME = "sigir-participant"
@@ -157,7 +156,7 @@ class HybridRetriever:
             exclude_ids: Set of document IDs to exclude from results
 
         Returns:
-            List of documents
+            List of tuples (document_text, document_id)
         """
         if top_k is None:
             top_k = self.top_k
@@ -228,8 +227,8 @@ class HybridRetriever:
             combined.values(), key=lambda x: x["final_score"], reverse=True
         )[:top_k]
 
-        # Extract just the text
-        documents = [res["text"] for res in ranked_results]
-        print(f"Retrieved {len(documents)} documents using hybrid search")
+        # Return text and ID as tuples
+        results = [(res["text"], res["id"]) for res in ranked_results]
+        print(f"Retrieved {len(results)} documents using hybrid search")
 
-        return documents
+        return results

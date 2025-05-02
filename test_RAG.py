@@ -2,6 +2,16 @@ import argparse
 import json
 import time
 from tqdm import tqdm
+import os
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("main_rag_runner.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger("MAIN_RAG_Runner")
 
 # Import our components
 from main_rag import MAIN_RAG
@@ -15,8 +25,24 @@ def load_datamorgana_questions(file_path="datamorgana_questions.json"):
             data = json.load(f)
         return data
     except FileNotFoundError:
-        print(f"Error: DataMorgana questions file not found at {file_path}")
+        logger.error(f"DataMorgana questions file not found at {file_path}")
         return []
+
+
+def format_output_for_submission(result):
+    """Format result for formal submission requirements."""
+    # Format as per specified requirements
+    output = {
+        "question_id": result.get("id", "unknown"),
+        "question": result["question"],
+        "answer": result["model_answer"],
+        "supporting_passages": [
+            {"text": doc_text, "doc_id": doc_id}
+            for doc_text, doc_id in result["supporting_passages"]
+        ],
+        "full_prompt": result.get("agent3_prompt", ""),
+    }
+    return output
 
 
 def main():
@@ -50,19 +76,30 @@ def main():
         default=None,
         help="Process a single question instead of the entire dataset",
     )
+    parser.add_argument(
+        "--output_format",
+        choices=["debug", "formal"],
+        default="debug",
+        help="Output format: 'debug' for detailed debug info or 'formal' for submission format",
+    )
     args = parser.parse_args()
 
     # Initialize the hybrid retriever
-    print(f"Initializing hybrid retriever with alpha={args.alpha}...")
+    logger.info(f"Initializing hybrid retriever with alpha={args.alpha}...")
     retriever = HybridRetriever(alpha=args.alpha, top_k=args.top_k)
 
     # Initialize MAIN-RAG
-    print(f"Initializing enhanced MAIN-RAG with n={args.n}...")
+    logger.info(f"Initializing enhanced MAIN-RAG with n={args.n}...")
     main_rag = MAIN_RAG(retriever, agent_model=args.model, n=args.n)
+
+    # Create results directories
+    os.makedirs("results", exist_ok=True)
+    os.makedirs("results/debug", exist_ok=True)
+    os.makedirs("results/formal", exist_ok=True)
 
     # Process a single question if specified
     if args.single_question:
-        print(f"\nProcessing single question: {args.single_question}")
+        logger.info(f"\nProcessing single question: {args.single_question}")
         start_time = time.time()
 
         try:
@@ -74,6 +111,7 @@ def main():
 
             # Create result object
             result = {
+                "id": "single_question",
                 "question": args.single_question,
                 "model_answer": answer,
                 "tau_q": debug_info["tau_q"],
@@ -83,43 +121,52 @@ def main():
                 "completely_answered": debug_info["completely_answered"],
                 "judge_response": debug_info["judge_response"],
                 "follow_up_answers": debug_info["follow_up_answers"],
+                "answer_with_citations": debug_info["answer_with_citations"],
+                "supporting_passages": debug_info["supporting_passages"],
+                "agent3_prompt": debug_info["agent3_prompt"],
             }
 
-            print(f"Answer: {answer}")
-            print(f"Processing time: {process_time:.2f} seconds")
-            print(
+            logger.info(f"Answer: {answer}")
+            logger.info(f"Processing time: {process_time:.2f} seconds")
+            logger.info(
                 f"Tau_q: {debug_info['tau_q']:.4f} (adjusted: {debug_info['adjusted_tau_q']:.4f})"
             )
-            print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}")
-            print(f"Completely answered: {debug_info['completely_answered']}")
+            logger.info(
+                f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}"
+            )
+            logger.info(f"Completely answered: {debug_info['completely_answered']}")
 
-            # Save single result
-            output_file = f"results/enhanced_main_rag_single_question.json"
-            with open(output_file, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2)
+            # Save result based on format
+            if args.output_format == "debug":
+                output_file = f"results/debug/single_question_debug.json"
+                with open(output_file, "w", encoding="utf-8") as f:
+                    json.dump(result, f, indent=2)
+            else:  # formal
+                output_file = f"results/formal/single_question_formal.json"
+                formal_output = format_output_for_submission(result)
+                with open(output_file, "w", encoding="utf-8") as f:
+                    json.dump(formal_output, f, indent=2)
 
-            print(f"Result saved to {output_file}")
+            logger.info(f"Result saved to {output_file}")
 
         except Exception as e:
-            print(f"Error processing question: {e}")
+            logger.error(f"Error processing question: {e}", exc_info=True)
 
         return
 
     # Load DataMorgana questions
     questions = load_datamorgana_questions(args.data_file)
     if not questions:
-        print("No questions found. Exiting.")
+        logger.error("No questions found. Exiting.")
         return
 
-    # Create results directory
-    import os
-
-    os.makedirs("results", exist_ok=True)
-
     # Process each question
-    results = []
+    debug_results = []
+    formal_results = []
+
     for i, item in enumerate(questions):
-        print(f"\nProcessing question {i+1}/{len(questions)}: {item['question']}")
+        question_id = item.get("id", str(i + 1))
+        logger.info(f"\nProcessing question {i+1}/{len(questions)}: {item['question']}")
         start_time = time.time()
 
         try:
@@ -131,8 +178,9 @@ def main():
 
             # Save result
             result = {
+                "id": question_id,
                 "question": item["question"],
-                "reference_answer": item["answer"],
+                "reference_answer": item.get("answer", ""),
                 "model_answer": answer,
                 "tau_q": debug_info["tau_q"],
                 "adjusted_tau_q": debug_info["adjusted_tau_q"],
@@ -141,33 +189,56 @@ def main():
                 "completely_answered": debug_info["completely_answered"],
                 "judge_response": debug_info["judge_response"],
                 "follow_up_answers": debug_info["follow_up_answers"],
+                "answer_with_citations": debug_info["answer_with_citations"],
+                "supporting_passages": debug_info["supporting_passages"],
+                "agent3_prompt": debug_info["agent3_prompt"],
             }
-            results.append(result)
+            debug_results.append(result)
 
-            print(f"Answer: {answer}")
-            print(f"Processing time: {process_time:.2f} seconds")
-            print(
+            # Format for formal submission
+            formal_result = format_output_for_submission(result)
+            formal_results.append(formal_result)
+
+            logger.info(f"Answer: {answer}")
+            logger.info(f"Processing time: {process_time:.2f} seconds")
+            logger.info(
                 f"Tau_q: {debug_info['tau_q']:.4f} (adjusted: {debug_info['adjusted_tau_q']:.4f})"
             )
-            print(f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}")
-            print(f"Completely answered: {debug_info['completely_answered']}")
+            logger.info(
+                f"Filtered docs: {len(debug_info['filtered_docs'])}/{args.top_k}"
+            )
+            logger.info(f"Completely answered: {debug_info['completely_answered']}")
 
         except Exception as e:
-            print(f"Error processing question: {e}")
+            logger.error(f"Error processing question: {e}", exc_info=True)
 
     # Save results
-    output_file = f"results/enhanced_main_rag_hybrid_n{args.n}_a{args.alpha}.json"
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
+    if debug_results:
+        debug_output_file = (
+            f"results/debug/enhanced_main_rag_n{args.n}_a{args.alpha}.json"
+        )
+        with open(debug_output_file, "w", encoding="utf-8") as f:
+            json.dump(debug_results, f, indent=2)
+        logger.info(f"Debug results saved to {debug_output_file}")
 
-    print(f"\nProcessed {len(results)} questions. Results saved to {output_file}")
+    if formal_results:
+        formal_output_file = (
+            f"results/formal/enhanced_main_rag_n{args.n}_a{args.alpha}.json"
+        )
+        with open(formal_output_file, "w", encoding="utf-8") as f:
+            json.dump(formal_results, f, indent=2)
+        logger.info(f"Formal results saved to {formal_output_file}")
+
+    logger.info(f"\nProcessed {len(debug_results)} questions.")
 
     # Print summary statistics
-    if results:
-        avg_time = sum(r["process_time"] for r in results) / len(results)
-        avg_filtered = sum(r["filtered_count"] for r in results) / len(results)
-        print(f"Average processing time: {avg_time:.2f} seconds")
-        print(f"Average filtered documents: {avg_filtered:.1f}")
+    if debug_results:
+        avg_time = sum(r["process_time"] for r in debug_results) / len(debug_results)
+        avg_filtered = sum(r["filtered_count"] for r in debug_results) / len(
+            debug_results
+        )
+        logger.info(f"Average processing time: {avg_time:.2f} seconds")
+        logger.info(f"Average filtered documents: {avg_filtered:.1f}")
 
 
 if __name__ == "__main__":
