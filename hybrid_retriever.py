@@ -41,41 +41,25 @@ class HybridRetriever:
 
         # Initialize Pinecone
         print("Connecting to Pinecone...")
-        try:
-            self.pinecone_api_key = self._get_ssm_secret("/pinecone/ro_token")
-            self.pc = Pinecone(api_key=self.pinecone_api_key)
-            self.pinecone_index = self.pc.Index(name=PINECONE_INDEX_NAME)
-        except Exception as e:
-            print(f"Error initializing Pinecone: {e}")
-            raise
+        self.pinecone_api_key = self._get_ssm_secret("/pinecone/ro_token")
+        self.pc = Pinecone(api_key=self.pinecone_api_key)
+        self.pinecone_index = self.pc.Index(name=PINECONE_INDEX_NAME)
 
         # Initialize OpenSearch
         print("Connecting to OpenSearch...")
-        try:
-            self.opensearch_client = self._get_opensearch_client()
-        except Exception as e:
-            print(f"Error initializing OpenSearch: {e}")
-            raise
+        self.opensearch_client = self._get_opensearch_client()
 
         print("Hybrid retriever initialized successfully")
 
     def _get_ssm_secret(self, key, profile=AWS_PROFILE_NAME, region=AWS_REGION_NAME):
         """Get a secret from AWS SSM."""
-        try:
-            # Create a session using the profile and region
-            session = boto3.Session(profile_name=profile, region_name=region)
-            ssm = session.client("ssm")
-            return ssm.get_parameter(Name=key, WithDecryption=True)["Parameter"][
-                "Value"
-            ]
-        except Exception as e:
-            print(f"Error getting SSM secret: {e}")
-            raise
+        session = boto3.Session(profile_name=profile, region_name=region)
+        ssm = session.client("ssm")
+        return ssm.get_parameter(Name=key, WithDecryption=True)["Parameter"]["Value"]
 
     def _get_opensearch_client(self, profile=AWS_PROFILE_NAME, region=AWS_REGION_NAME):
         """Get an OpenSearch client."""
-        session = boto3.Session(profile_name=profile, region_name=region)
-        credentials = session.get_credentials()
+        credentials = boto3.Session(profile_name=profile).get_credentials()
         auth = AWSV4SignerAuth(credentials, region=region)
         host_name = self._get_ssm_value(
             "/opensearch/endpoint", profile=profile, region=region
@@ -163,19 +147,23 @@ class HybridRetriever:
             )
         return parsed
 
-    def retrieve(self, query, top_k=None):
+    def retrieve(self, query, top_k=None, exclude_ids=None):
         """
         Retrieve documents using hybrid search (semantic + keyword).
 
         Args:
             query: The search query
             top_k: Number of documents to retrieve
+            exclude_ids: Set of document IDs to exclude from results
 
         Returns:
             List of documents
         """
         if top_k is None:
             top_k = self.top_k
+
+        if exclude_ids is None:
+            exclude_ids = set()
 
         expanded_top_k = min(top_k * 3, 1000)  # Retrieve more docs to rerank
 
@@ -205,26 +193,28 @@ class HybridRetriever:
         semantic_results = self._normalize_scores(semantic_results, "score")
         keyword_results = self._normalize_scores(keyword_results, "score")
 
-        # Merge results
+        # Merge results and filter excluded IDs
         combined = {}
         for res in semantic_results:
-            combined[res["id"]] = {
-                "id": res["id"],
-                "text": res["text"],
-                "semantic_score": res["normalized_score"],
-                "keyword_score": 0.0,
-            }
-
-        for res in keyword_results:
-            if res["id"] in combined:
-                combined[res["id"]]["keyword_score"] = res["normalized_score"]
-            else:
+            if res["id"] not in exclude_ids:
                 combined[res["id"]] = {
                     "id": res["id"],
                     "text": res["text"],
-                    "semantic_score": 0.0,
-                    "keyword_score": res["normalized_score"],
+                    "semantic_score": res["normalized_score"],
+                    "keyword_score": 0.0,
                 }
+
+        for res in keyword_results:
+            if res["id"] not in exclude_ids:
+                if res["id"] in combined:
+                    combined[res["id"]]["keyword_score"] = res["normalized_score"]
+                else:
+                    combined[res["id"]] = {
+                        "id": res["id"],
+                        "text": res["text"],
+                        "semantic_score": 0.0,
+                        "keyword_score": res["normalized_score"],
+                    }
 
         # Calculate hybrid scores
         for res in combined.values():

@@ -1,10 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 import re
-
-# Import citation and faithfulness checking components
-from citation_helper import CitationHelper
-from faithfulness_judge import FaithfulnessJudge
+import copy
 
 
 class MAIN_RAG:
@@ -17,7 +14,7 @@ class MAIN_RAG:
         pinecone_api_key=None,
     ):
         """
-        MAIN-RAG framework implementation.
+        Enhanced MAIN-RAG framework implementation with citation tracking and judgment.
 
         Args:
             retriever: Document retriever instance (Pinecone or other)
@@ -28,6 +25,10 @@ class MAIN_RAG:
         """
         self.retriever = retriever
         self.n = n  # Hyperparameter for adaptive judge bar adjustment
+
+        # Save these for potential reuse in Agent4
+        self.agent_model = agent_model
+        self.falcon_api_key = falcon_api_key
 
         # Initialize agents based on provided parameters
         if isinstance(agent_model, str):
@@ -40,7 +41,8 @@ class MAIN_RAG:
                     self.agent1
                 )  # Judge (reuse the same instance to save resources)
                 self.agent3 = self.agent1  # Final-Predictor
-                print(f"Using Falcon agents with API for all three agent roles")
+                self.agent4 = self.agent1  # Claim Judge
+                print(f"Using Falcon agents with API for all four agent roles")
             else:
                 # Initialize local LLM agents
                 from llm_agent import LLMAgent
@@ -48,16 +50,15 @@ class MAIN_RAG:
                 self.agent1 = LLMAgent(agent_model)  # Predictor
                 self.agent2 = self.agent1  # Judge
                 self.agent3 = self.agent1  # Final-Predictor
+                self.agent4 = self.agent1  # Claim Judge
                 print(f"Using local LLM agents with model {agent_model}")
         else:
             # Use pre-initialized agent
             self.agent1 = agent_model  # Predictor
             self.agent2 = self.agent1  # Judge
             self.agent3 = self.agent1  # Final-Predictor
-            print("Using pre-initialized agent for all three agent roles")
-
-        # Initialize helper classes
-        self.citation_helper = CitationHelper()
+            self.agent4 = self.agent1  # Claim Judge
+            print("Using pre-initialized agent for all four agent roles")
 
     def _create_agent1_prompt(self, query, document):
         """Create prompt for Agent-1 (Predictor)."""
@@ -82,80 +83,109 @@ LLM Answer: {answer}
 Is this document relevant and supportive for answering the question?"""
 
     def _create_agent3_prompt(self, query, filtered_documents):
-        """Create prompt for Agent-3 (Final-Predictor) using the paper's format."""
+        """
+        Create prompt for Agent-3 (Final-Predictor) with citation instructions.
+        Instructs the model to cite which document(s) support each claim.
+        """
         docs_text = "\n\n".join(
             [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
         )
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. You should only provide the correct answer without repeating the question and instruction.
+        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. Your answer should be based ONLY on the provided documents. If the documents don't contain sufficient information to answer the question, state that clearly.
+
+IMPORTANT: For each claim or statement in your answer, you MUST include a citation to the specific document(s) that support it. Use the format [X] at the end of each sentence or claim, where X is the document number.
+
+For example:
+- If information comes from Document 1, end the sentence with [1].
+- If a claim is supported by multiple documents, cite all of them like [1,3].
+- Every factual claim must have a citation.
 
 Documents:
 {docs_text}
 
 Question: {query}
 
-Answer:"""
+Answer (with citations):"""
 
-    def _create_agent3_prompt_with_citations(self, query, filtered_documents):
-        """Create a prompt for Agent-3 that encourages citation-friendly outputs."""
+    def _create_agent4_prompt(self, query, answer_with_citations, all_documents):
+        """
+        Create prompt for Agent-4 (Claim Judge).
+        This agent judges if the cited claims properly answer the question and identifies gaps.
+        """
         docs_text = "\n\n".join(
-            [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
+            [f"Document {i+1}: {doc}" for i, doc in enumerate(all_documents)]
         )
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. For each statement you make in your answer, try to base it on specific information from the documents.
 
-Documents:
+        return f"""You are a meticulous judge evaluating if a question has been fully answered. Your task has three parts:
+
+1. CLAIM ANALYSIS: Analyze the answer with citations and identify each claim made.
+2. QUESTION COVERAGE: Determine if the original question has been completely answered.
+3. GAP IDENTIFICATION: If parts of the question remain unanswered, identify these gaps precisely.
+
+Original Question: {query}
+
+Answer with Citations:
+{answer_with_citations}
+
+Available Documents:
 {docs_text}
 
-Question: {query}
+First, analyze each claim with its citation and evaluate if it correctly addresses part of the question.
+Then, determine if any parts of the question remain unanswered.
 
-Provide a comprehensive answer that's supported by the documents. Make each statement specific and detailed, drawing directly from the documents. Your answer should be focused, directly addressing the question, and use information from the documents whenever possible.
+Finally, provide your analysis in this format:
+COMPLETELY_ANSWERED: Yes/No
+UNANSWERED_ASPECTS: [List any aspects of the question that remain unanswered]
+FOLLOW_UP_QUESTIONS: [If needed, rewrite specific questions to address the unanswered aspects]
 
-If the documents contain conflicting information, you can mention this. If the documents don't fully address all aspects of the question, you can indicate what information is missing.
+Your analysis:"""
 
-Remember that your answer will be checked for faithfulness to the documents, so be careful not to add information that isn't supported by them."""
-
-    def _create_agent3_prompt_for_multiple_choice(
-        self, query, choices, filtered_documents
+    def _create_follow_up_prompt(
+        self, original_query, follow_up_question, filtered_documents, previous_answer
     ):
-        """Create prompt for Agent-3 (Final-Predictor) for multiple-choice questions."""
+        """Create prompt for generating an answer to a follow-up question."""
         docs_text = "\n\n".join(
             [f"Document {i+1}: {doc}" for i, doc in enumerate(filtered_documents)]
         )
-        choices_text = "\n".join(
-            [f"{chr(65+i)}. {choice}" for i, choice in enumerate(choices)]
-        )
 
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. You should only provide the correct answer without repeating the question and instruction.
+        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question based on the provided documents.
+
+Original Question: {original_query}
+Previous Answer: {previous_answer}
+
+Follow-up Question: {follow_up_question}
 
 Documents:
 {docs_text}
 
-Question: {query}
+Answer the follow-up question ONLY based on the provided documents. Use the format [X] to cite which document(s) support each claim, where X is the document number. If the documents don't contain the necessary information, state that clearly.
 
-Choices:
-{choices_text}
+Follow-up Answer (with citations):"""
 
-Select the best answer choice (A, B, C, or D) based on the information in the documents.
+    def _extract_claims_with_citations(self, answer_with_citations):
+        """Extract individual claims and their citations from the answer."""
+        # Simple regex-based extraction - can be enhanced for more complex answers
+        claim_pattern = r"(.*?)\s*\[(\d+(?:,\s*\d+)*)\]"
+        claims = []
 
-Answer:"""
+        for match in re.finditer(claim_pattern, answer_with_citations):
+            claim_text = match.group(1).strip()
+            citation_str = match.group(2)
+            citations = [int(c.strip()) for c in citation_str.split(",")]
 
-    def extract_multiple_choice_answer(self, text):
-        """Extract just the letter choice from a multiple-choice answer."""
-        if not text:
-            return "B"  # Default to B if empty
+            if claim_text:
+                claims.append({"text": claim_text, "citations": citations})
 
-        text = text.strip().upper()
+        return claims
 
-        # If the text starts with A, B, C, or D, take just the letter
-        if text and text[0] in "ABCD":
-            return text[0]
+    def _combine_answers(self, original_answer, follow_up_answers):
+        """Combine the original answer with follow-up answers."""
+        if not follow_up_answers:
+            return original_answer
 
-        # Otherwise search for a letter in the text
-        for char in text:
-            if char in "ABCD":
-                return char
+        combined = original_answer + "\n\nAdditional information:\n"
+        combined += "\n\n".join(follow_up_answers)
 
-        # Default to B if no letter found
-        return "B"
+        return combined
 
     def clean_answer(self, answer):
         """Simple cleaning function to handle empty or problematic answers."""
@@ -178,44 +208,10 @@ Answer:"""
         if not lines:
             return "no answer provided"
 
-        # Return full answer instead of just first line
-        return answer.strip()
-
-    def extract_direct_answer(self, generated_text):
-        """Extract just the direct answer without formatting or source references."""
-        # Remove common prefixes
-        text = generated_text.strip()
-
-        # Remove URLs and source references
-        text = re.sub(r"Source:.*", "", text)
-        text = re.sub(r"https?://\S+", "", text)
-
-        # Remove document prefixes
-        text = re.sub(r"Document \d+:.*?:", "", text)
-
-        # Remove formatting instructions
-        text = re.sub(r"\(Note:.*?\)", "", text)
-        text = re.sub(r"##.*", "", text)
-
-        # Split by newlines and take first substantive part
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-        if not lines:
-            return text
-
-        # If the first line is very short and the second has content, include both
-        if len(lines) > 1 and len(lines[0]) < 15 and not lines[0].endswith("."):
-            return lines[0] + " " + lines[1]
-
-        # If there's a question mark in subsequent lines, cut there
-        for i, line in enumerate(lines):
-            if i > 0 and ("?" in line or line.lower().startswith("question")):
-                return "\n".join(lines[:i]).strip()
-
-        # Just return the full text
-        return text
+        return "\n".join(lines)  # Return all lines to preserve citations
 
     def answer_query(self, query, choices=None):
-        """Process a query using the MAIN-RAG framework."""
+        """Process a query using the enhanced MAIN-RAG framework with citation and judgment."""
         print(f"Processing query: {query}")
 
         # Step 1: Retrieve documents
@@ -250,44 +246,85 @@ Answer:"""
 
         # Step 5: Filter and rank documents
         filtered_docs = []
+        filtered_indices = []  # Track which documents passed the filter
         for i, (doc, _) in enumerate(doc_answers):
             if scores[i] >= adjusted_tau_q:
                 filtered_docs.append((doc, scores[i]))
+                filtered_indices.append(i)
 
         # Sort by score in descending order (crucial for performance)
         filtered_docs.sort(key=lambda x: x[1], reverse=True)
         print(f"Filtered to {len(filtered_docs)} documents")
 
-        # Step 6: Agent-3 generates final answer
-        print("Agent-3 generating final answer...")
+        # Step 6: Agent-3 generates answer with citations
+        print("Agent-3 generating answer with citations...")
         if filtered_docs:
             docs_only = [doc for doc, _ in filtered_docs]
-
-            if choices:  # Multiple choice for ARC
-                prompt = self._create_agent3_prompt_for_multiple_choice(
-                    query, choices, docs_only
-                )
-                raw_answer = self.agent3.generate(prompt)
-                final_answer = self.extract_multiple_choice_answer(raw_answer)
-            else:  # General prompt for all other benchmarks
-                prompt = self._create_agent3_prompt(query, docs_only)
-                raw_answer = self.agent3.generate(prompt)
-                final_answer = self.clean_answer(raw_answer)
+            prompt = self._create_agent3_prompt(query, docs_only)
+            raw_answer = self.agent3.generate(prompt)
+            answer_with_citations = self.clean_answer(raw_answer)
         else:
             # Fall back to using all documents if none pass the filter
             print("Warning: No documents passed the filter, using all documents")
             docs_only = [doc for doc, _ in doc_answers]
+            prompt = self._create_agent3_prompt(query, docs_only)
+            raw_answer = self.agent3.generate(prompt)
+            answer_with_citations = self.clean_answer(raw_answer)
 
-            if choices:
-                prompt = self._create_agent3_prompt_for_multiple_choice(
-                    query, choices, docs_only
-                )
-                raw_answer = self.agent3.generate(prompt)
-                final_answer = self.extract_multiple_choice_answer(raw_answer)
-            else:
-                prompt = self._create_agent3_prompt(query, docs_only)
-                raw_answer = self.agent3.generate(prompt)
-                final_answer = self.clean_answer(raw_answer)
+        # Step 7: Agent-4 judges if the question is completely answered
+        print("Agent-4 judging answer completeness...")
+        judge_prompt = self._create_agent4_prompt(
+            query, answer_with_citations, docs_only
+        )
+        judge_response = self.agent4.generate(judge_prompt)
+
+        # Extract judgment results
+        completely_answered = "COMPLETELY_ANSWERED: Yes" in judge_response
+
+        # Process follow-up questions if needed
+        follow_up_answers = []
+
+        if not completely_answered:
+            print("Question not completely answered. Processing follow-up questions...")
+
+            # Extract follow-up questions
+            follow_up_match = re.search(
+                r"FOLLOW_UP_QUESTIONS:(.*?)(?=COMPLETELY_ANSWERED:|$)",
+                judge_response,
+                re.DOTALL,
+            )
+
+            if follow_up_match:
+                follow_up_text = follow_up_match.group(1).strip()
+                follow_up_questions = [
+                    q.strip() for q in follow_up_text.split("\n") if q.strip()
+                ]
+
+                # Get already retrieved docs to exclude
+                already_retrieved_ids = set(doc_id for doc, _ in doc_answers)
+
+                for i, follow_up_q in enumerate(follow_up_questions):
+                    print(f"Processing follow-up question {i+1}: {follow_up_q}")
+
+                    # Retrieve new documents for follow-up question (excluding already retrieved)
+                    new_docs = self.retriever.retrieve(
+                        follow_up_q, top_k=10, exclude_ids=already_retrieved_ids
+                    )
+
+                    if new_docs:
+                        # Generate answer for follow-up question
+                        follow_up_prompt = self._create_follow_up_prompt(
+                            query, follow_up_q, new_docs, answer_with_citations
+                        )
+                        follow_up_answer = self.agent3.generate(follow_up_prompt)
+                        follow_up_answers.append(follow_up_answer)
+
+        # Combine original answer with follow-up answers
+        final_answer = answer_with_citations
+        if follow_up_answers:
+            final_answer = self._combine_answers(
+                answer_with_citations, follow_up_answers
+            )
 
         # Make sure we never return empty answers
         if not final_answer or final_answer.strip() == "":
@@ -301,326 +338,29 @@ Answer:"""
             "scores": scores,
             "filtered_docs": [(doc, score) for doc, score in filtered_docs],
             "raw_answer": raw_answer,
+            "answer_with_citations": answer_with_citations,
+            "judge_response": judge_response,
+            "completely_answered": completely_answered,
+            "follow_up_answers": follow_up_answers,
         }
 
         return final_answer, debug_info
 
-    def answer_query_with_citations(
-        self, query, choices=None, use_faithfulness_judge=True, verbose_logging=False
-    ):
-        """
-        Process a query using the enhanced MAIN-RAG framework with citations and faithfulness checking.
+    def extract_multiple_choice_answer(self, text):
+        """Extract just the letter choice from a multiple-choice answer."""
+        if not text:
+            return "B"  # Default to B if empty
 
-        Args:
-            query: The user's query
-            choices: List of choices for multiple-choice questions
-            use_faithfulness_judge: Whether to use the faithfulness judge
-            verbose_logging: Whether to print detailed logs
+        text = text.strip().upper()
 
-        Returns:
-            The final answer with citations, and debug information
-        """
-        if verbose_logging:
-            print("\n" + "=" * 80)
-            print(f"PROCESSING QUERY WITH CITATIONS: {query}")
-            print("=" * 80)
-        else:
-            print(f"Processing query with citations: {query}")
+        # If the text starts with A, B, C, or D, take just the letter
+        if text and text[0] in "ABCD":
+            return text[0]
 
-        # Step 1: Retrieve documents
-        print("Retrieving documents...")
-        retrieved_docs = self.retriever.retrieve(
-            query, top_k=20
-        )  # Always retrieve 20 docs as in the paper
-        print(f"Retrieved {len(retrieved_docs)} documents")
+        # Otherwise search for a letter in the text
+        for char in text:
+            if char in "ABCD":
+                return char
 
-        # Step 2: Agent-1 generates answers for each document
-        print("Agent-1 generating answers for each document...")
-        doc_answers = []
-        for doc in tqdm(retrieved_docs):
-            prompt = self._create_agent1_prompt(query, doc)
-            answer = self.agent1.generate(prompt)
-            doc_answers.append((doc, answer))
-
-        # Step 3: Agent-2 evaluates and scores each document
-        print("Agent-2 evaluating and scoring documents...")
-        scores = []
-        for doc, answer in tqdm(doc_answers):
-            prompt = self._create_agent2_prompt(query, doc, answer)
-            log_probs = self.agent2.get_log_probs(prompt, ["Yes", "No"])
-            score = log_probs["Yes"] - log_probs["No"]  # Key scoring mechanism
-            scores.append(score)
-
-        # Step 4: Calculate adaptive judge bar (τq)
-        tau_q = np.mean(scores)
-        sigma = np.std(scores)
-        adjusted_tau_q = tau_q - self.n * sigma  # Use the n hyperparameter here
-        print(f"Adaptive judge bar: τq={tau_q:.4f}, adjusted: {adjusted_tau_q:.4f}")
-
-        # Step 5: Filter and rank documents
-        filtered_docs = []
-        for i, (doc, _) in enumerate(doc_answers):
-            if scores[i] >= adjusted_tau_q:
-                filtered_docs.append((doc, scores[i]))
-
-        # Sort by score in descending order (crucial for performance)
-        filtered_docs.sort(key=lambda x: x[1], reverse=True)
-        print(f"Filtered to {len(filtered_docs)} documents")
-
-        # Step 6: Agent-3 generates the initial answer with citation-friendly prompt
-        print("Agent-3 generating initial answer...")
-        if filtered_docs:
-            docs_only = [doc for doc, _ in filtered_docs]
-
-            if choices:  # Multiple choice for ARC
-                prompt = self._create_agent3_prompt_for_multiple_choice(
-                    query, choices, docs_only
-                )
-                raw_answer = self.agent3.generate(prompt)
-                initial_answer = self.extract_multiple_choice_answer(raw_answer)
-            else:  # General prompt with citation-friendly format
-                prompt = self._create_agent3_prompt_with_citations(query, docs_only)
-                raw_answer = self.agent3.generate(prompt)
-                initial_answer = self.clean_answer(raw_answer)
-        else:
-            # Fall back to using all documents if none pass the filter
-            print("Warning: No documents passed the filter, using all documents")
-            docs_only = [doc for doc, _ in doc_answers]
-
-            if choices:
-                prompt = self._create_agent3_prompt_for_multiple_choice(
-                    query, choices, docs_only
-                )
-                raw_answer = self.agent3.generate(prompt)
-                initial_answer = self.extract_multiple_choice_answer(raw_answer)
-            else:
-                prompt = self._create_agent3_prompt_with_citations(query, docs_only)
-                raw_answer = self.agent3.generate(prompt)
-                initial_answer = self.clean_answer(raw_answer)
-
-        # Make sure we never return empty answers
-        if not initial_answer or initial_answer.strip() == "":
-            initial_answer = "no answer provided"
-
-        # Create basic debug info
-        debug_info = {
-            "tau_q": tau_q,
-            "adjusted_tau_q": adjusted_tau_q,
-            "sigma": sigma,
-            "scores": scores,
-            "filtered_docs": [(doc, score) for doc, score in filtered_docs],
-            "raw_answer": raw_answer,
-        }
-
-        # If we're doing a multiple choice question, just return the answer letter
-        if choices:
-            return initial_answer, debug_info
-
-        # Step 7: Extract and add citations to the answer
-        print("Adding citations to the answer...")
-        try:
-            answer_with_citations = (
-                self.citation_helper.extract_sentences_with_citations(
-                    initial_answer, docs_only
-                )
-            )
-
-            if verbose_logging:
-                print(
-                    f"Extracted {len(answer_with_citations['citations'])} citations from answer"
-                )
-
-        except Exception as e:
-            print(f"Citation extraction failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            # If citation extraction fails, return the initial answer without citations
-            return initial_answer, debug_info
-
-        # If we don't want or can't do faithfulness checking, just format and return
-        if not use_faithfulness_judge:
-            try:
-                final_answer = self.citation_helper.format_answer_with_citations(
-                    answer_with_citations
-                )
-                return final_answer, debug_info
-            except Exception as e:
-                print(f"Citation formatting failed: {e}")
-                # If formatting fails, return the initial answer
-                return initial_answer, debug_info
-
-        # If there are no citations to check, just format and return
-        if not answer_with_citations["citations"]:
-            try:
-                final_answer = self.citation_helper.format_answer_with_citations(
-                    answer_with_citations
-                )
-                return final_answer, debug_info
-            except Exception as e:
-                print(f"Citation formatting failed: {e}")
-                return initial_answer, debug_info
-
-        # Step 8: Evaluate answer faithfulness using the judge
-        print("Evaluating answer faithfulness...")
-        faithfulness_judge = FaithfulnessJudge(self.agent3)  # Reuse the same agent
-        try:
-            faith_results, citation_details = (
-                faithfulness_judge.evaluate_answer_with_citations(
-                    query, answer_with_citations, verbose_logging=verbose_logging
-                )
-            )
-
-            # Add faithfulness evaluation to debug info
-            debug_info["faithfulness_results"] = faith_results
-            debug_info["citation_details"] = citation_details
-
-            # Step 9: Based on faithfulness evaluation, decide what to do
-            if faith_results["action"] == "keep":
-                print("Answer is faithful to the documents. Keeping as is.")
-                final_answer = self.citation_helper.format_answer_with_citations(
-                    answer_with_citations
-                )
-            elif faith_results["action"] == "regenerate":
-                print("Regenerating answer with only valid citations...")
-                # Filter to keep only valid documents
-                valid_doc_indices = [
-                    doc_idx for _, doc_idx in faith_results.get("valid_citations", [])
-                ]
-                if valid_doc_indices:
-                    valid_docs = [
-                        docs_only[i] for i in valid_doc_indices if i < len(docs_only)
-                    ]
-                else:
-                    valid_docs = []
-
-                # If we have valid documents, regenerate the answer
-                if (
-                    valid_docs and len(valid_docs) >= 2
-                ):  # Need at least a couple docs for a good answer
-                    prompt = self._create_agent3_prompt_with_citations(
-                        query, valid_docs
-                    )
-                    regenerated_raw = self.agent3.generate(prompt)
-                    regenerated_answer = self.clean_answer(regenerated_raw)
-
-                    # Update debug info with regenerated answer
-                    debug_info["regenerated_raw_answer"] = regenerated_raw
-
-                    # Extract citations for the regenerated answer
-                    regen_with_citations = (
-                        self.citation_helper.extract_sentences_with_citations(
-                            regenerated_answer, valid_docs
-                        )
-                    )
-
-                    # Check if regenerated answer has citations
-                    if regen_with_citations["citations"]:
-                        final_answer = (
-                            self.citation_helper.format_answer_with_citations(
-                                regen_with_citations
-                            )
-                        )
-                    else:
-                        # If regenerated answer has no citations, keep original answer
-                        print(
-                            "Regenerated answer has no citations. Keeping original with disclaimer."
-                        )
-                        final_answer = (
-                            self.citation_helper.format_answer_with_citations(
-                                answer_with_citations
-                            )
-                        )
-                        final_answer += "\n\nNote: Some statements may not be fully supported by the source documents."
-                else:
-                    # If no valid documents, keep the original answer but add a disclaimer
-                    print(
-                        "No valid documents to regenerate from. Keeping original with disclaimer."
-                    )
-                    final_answer = self.citation_helper.format_answer_with_citations(
-                        answer_with_citations
-                    )
-                    final_answer += "\n\nNote: Some statements may not be fully supported by the source documents."
-            else:  # faith_results["action"] == "use_next_docs"
-                print("Using next set of documents...")
-                # Try the next 10 documents that weren't in the top filtered set
-                used_docs = set(docs_only)
-                next_docs = []
-
-                # Get documents from doc_answers that aren't in the top filtered docs
-                for doc, _ in doc_answers:
-                    if doc not in used_docs and len(next_docs) < 10:
-                        next_docs.append(doc)
-
-                if (
-                    next_docs and len(next_docs) >= 3
-                ):  # Need at least a few docs for a good answer
-                    # Generate a new answer with these documents
-                    prompt = self._create_agent3_prompt_with_citations(query, next_docs)
-                    new_raw_answer = self.agent3.generate(prompt)
-                    new_answer = self.clean_answer(new_raw_answer)
-
-                    # Update debug info
-                    debug_info["new_docs_raw_answer"] = new_raw_answer
-
-                    # Extract citations for the new answer
-                    new_with_citations = (
-                        self.citation_helper.extract_sentences_with_citations(
-                            new_answer, next_docs
-                        )
-                    )
-
-                    # Check if new answer has citations
-                    if new_with_citations["citations"]:
-                        final_answer = (
-                            self.citation_helper.format_answer_with_citations(
-                                new_with_citations
-                            )
-                        )
-                    else:
-                        # If new answer has no citations but seems informative
-                        # (more than a generic "no information" response)
-                        if (
-                            len(new_answer.split()) > 30
-                            and "sorry" not in new_answer.lower()
-                            and "cannot" not in new_answer.lower()
-                        ):
-                            final_answer = (
-                                new_answer
-                                + "\n\nNote: No specific source documents could be reliably cited for this information."
-                            )
-                        else:
-                            # If new answer is just a "no information" response, keep original
-                            print(
-                                "Alternative documents didn't yield a better answer. Keeping original."
-                            )
-                            final_answer = (
-                                self.citation_helper.format_answer_with_citations(
-                                    answer_with_citations
-                                )
-                            )
-                            final_answer += "\n\nNote: Supporting evidence for some statements may be limited."
-                else:
-                    # If no more documents available, use the original but add a disclaimer
-                    print(
-                        "No suitable alternative documents available. Keeping original answer with disclaimer."
-                    )
-                    final_answer = self.citation_helper.format_answer_with_citations(
-                        answer_with_citations
-                    )
-                    final_answer += "\n\nNote: The available documents may not directly address all aspects of this question."
-        except Exception as e:
-            # If faithfulness checking fails, fall back to simple citation formatting
-            print(f"Faithfulness checking failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            try:
-                final_answer = self.citation_helper.format_answer_with_citations(
-                    answer_with_citations
-                )
-            except:
-                final_answer = initial_answer
-            debug_info["faithfulness_error"] = str(e)
-
-        return final_answer, debug_info
+        # Default to B if no letter found
+        return "B"
