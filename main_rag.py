@@ -93,8 +93,8 @@ Is this document relevant and supportive for answering the question?"""
 
     def _create_agent3_prompt(self, query, filtered_documents):
         """
-        Create prompt for Agent-3 (Final-Predictor) with citation instructions.
-        Instructs the model to cite which document(s) support each claim.
+        Create prompt for Agent-3 (Final-Predictor) optimized for 300-word evaluation.
+        Instructs the model to put the most important information first.
         """
         # Format documents with index
         docs_text = "\n\n".join(
@@ -106,14 +106,18 @@ Is this document relevant and supportive for answering the question?"""
 
         return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. Your answer should be based ONLY on the provided documents. If the documents don't contain sufficient information to answer the question, state that clearly.
 
-IMPORTANT CITATION INSTRUCTIONS:
+IMPORTANT FORMATTING INSTRUCTIONS:
+1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS. Only the first 300 words will be evaluated.
+2. Begin with a concise, direct answer to the question that captures the essential information.
+3. Structure your answer with the most relevant information first, followed by supporting details.
+4. Be comprehensive but prioritize clarity and relevance in the opening paragraphs.
+
+CITATION INSTRUCTIONS:
 1. For each claim or statement in your answer, add a citation in square brackets [X] immediately after the sentence.
 2. DO NOT refer to documents in the text like "Document 1 states..." or "According to Document 2...".
 3. Use ONLY the [X] format where X is the document number.
 4. If multiple documents support a claim, cite all of them like [1,3,5].
 5. Every factual claim must have a citation.
-6. Be concise and direct in your answer while ensuring proper citation.
-7. Arrange your answer in cohesive paragraphs, with each statement properly cited.
 
 Documents:
 {docs_text}

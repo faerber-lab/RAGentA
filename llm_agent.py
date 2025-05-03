@@ -69,7 +69,7 @@ class LLMAgent:
         )
         print(f"Model loaded on {self.device}")
 
-    def generate(self, prompt, max_new_tokens=256):
+    def generate(self, prompt, max_new_tokens=1024):
         """
         Generate text using the local model with proper chat formatting.
 
