@@ -253,6 +253,10 @@ def main():
                 "completely_answered": debug_info.get("completely_answered", False),
                 "supporting_passages": debug_info["supporting_passages"],
                 "agent3_prompt": debug_info["agent3_prompt"],
+                # Add claim_analysis instead of judge_response if it exists
+                "claim_analysis": debug_info.get("claim_analysis", ""),
+                "question_aspects": debug_info.get("question_aspects", []),
+                "follow_up_questions": debug_info.get("follow_up_questions", []),
             }
 
             logger.info(f"Answer: {answer}")
@@ -311,6 +315,10 @@ def main():
                 "completely_answered": debug_info.get("completely_answered", False),
                 "supporting_passages": debug_info["supporting_passages"],
                 "agent3_prompt": debug_info["agent3_prompt"],
+                # Add claim_analysis instead of judge_response if it exists
+                "claim_analysis": debug_info.get("claim_analysis", ""),
+                "question_aspects": debug_info.get("question_aspects", []),
+                "follow_up_questions": debug_info.get("follow_up_questions", []),
             }
             results.append(result)
 
