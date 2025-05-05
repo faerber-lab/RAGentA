@@ -159,7 +159,7 @@ Then, determine if any parts of the question remain unanswered.
 Finally, provide your analysis in this format:
 COMPLETELY_ANSWERED: Yes/No
 UNANSWERED_ASPECTS: [List any aspects of the question that remain unanswered]
-FOLLOW_UP_QUESTIONS: [If needed, rewrite specific questions to address the unanswered aspects]
+FOLLOW_UP_QUESTIONS: [If needed, rewrite a specific single question for each unanswered aspect(keep the context of original question)]
 
 Your analysis:"""
 
