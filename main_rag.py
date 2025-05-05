@@ -3,6 +3,7 @@ from tqdm import tqdm
 import re
 import copy
 import logging
+from typing import List, Dict, Tuple, Any
 
 # Set up logging
 logging.basicConfig(
@@ -11,6 +12,405 @@ logging.basicConfig(
     handlers=[logging.FileHandler("main_rag.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("MAIN_RAG")
+
+
+class EnhancedAgent4:
+    """
+    Enhanced Agent 4 implementation for more granular claim analysis and improved
+    follow-up question processing.
+    """
+
+    def __init__(self, agent_model, retriever):
+        """
+        Initialize the enhanced Agent 4.
+
+        Args:
+            agent_model: The LLM agent to use for generation
+            retriever: Document retriever instance
+        """
+        self.agent = agent_model
+        self.retriever = retriever
+
+    def _create_claim_analysis_prompt(
+        self, query, answer_with_citations, claims, filtered_documents
+    ):
+        """
+        Create a prompt for analyzing individual claims against the question.
+
+        Args:
+            query: The original question
+            answer_with_citations: The answer with citations
+            claims: List of extracted claims with their citations
+            filtered_documents: The filtered documents used to generate the answer
+
+        Returns:
+            A prompt for claim analysis
+        """
+        # Format documents with index
+        docs_text = "\n\n".join(
+            [
+                f"Document {i+1}: {doc_text}"
+                for i, (doc_text, _) in enumerate(filtered_documents)
+            ]
+        )
+
+        # Format claims with their citations
+        claims_text = "\n\n".join(
+            [
+                f"Claim {i+1}: {claim['text']} [Citations: {', '.join(map(str, claim['citations']))}]"
+                for i, claim in enumerate(claims)
+            ]
+        )
+
+        return f"""You are a meticulous judge evaluating whether a question has been fully answered by analyzing each claim in the answer. Your analysis will be comprehensive and detailed.
+
+TASK:
+1. IDENTIFY ASPECTS: Break down the original question into its component aspects or sub-questions.
+2. CLAIM ANALYSIS: For each claim in the answer, determine which aspect(s) of the question it addresses, if any.
+3. COVERAGE ASSESSMENT: Identify which aspects of the question are fully answered, partially answered, or not answered at all.
+
+Original Question: {query}
+
+Answer with Citations:
+{answer_with_citations}
+
+Individual Claims:
+{claims_text}
+
+Available Documents:
+{docs_text}
+
+Please provide your analysis in the following format:
+
+QUESTION ASPECTS:
+- Aspect 1: [First aspect/sub-question of the original query]
+- Aspect 2: [Second aspect/sub-question]
+...
+
+CLAIM ANALYSIS:
+- Claim 1: [Whether this claim addresses any aspects, and which ones]
+- Claim 2: [Whether this claim addresses any aspects, and which ones]
+...
+
+COVERAGE ASSESSMENT:
+- Aspect 1: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
+- Aspect 2: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
+...
+
+UNANSWERED ASPECTS:
+- [List aspects that are partially or not answered]
+
+FOLLOW-UP QUESTIONS:
+- [Rewrite each unanswered aspect as a complete, standalone question that preserves context]
+
+Your analysis:"""
+
+    def _create_follow_up_answer_prompt(
+        self, original_query, follow_up_question, filtered_documents, previous_answer
+    ):
+        """
+        Create prompt for generating an answer to a follow-up question that integrates well with previous answers.
+
+        Args:
+            original_query: The original question
+            follow_up_question: The follow-up question
+            filtered_documents: The documents retrieved for this follow-up
+            previous_answer: The previous answer (without citations)
+
+        Returns:
+            A prompt for generating a follow-up answer
+        """
+        # Format documents with index
+        docs_text = "\n\n".join(
+            [
+                f"Document {i+1}: {doc_text}"
+                for i, (doc_text, _) in enumerate(filtered_documents)
+            ]
+        )
+
+        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question and integrate it with a previous answer to create a cohesive response.
+
+IMPORTANT FORMATTING INSTRUCTIONS:
+1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS of the final combined answer.
+2. Begin with a concise, direct answer to the follow-up question.
+3. Structure your answer with the most relevant information first, followed by supporting details.
+4. Be comprehensive but prioritize clarity and relevance.
+
+CITATION INSTRUCTIONS:
+1. For each claim or statement in your answer, add a citation in square brackets [X] immediately after the sentence.
+2. DO NOT refer to documents in the text like "Document 1 states..." or "According to Document 2...".
+3. Use ONLY the [X] format where X is the document number.
+4. If multiple documents support a claim, cite all of them like [1,3,5].
+5. Every factual claim must have a citation.
+
+Original Question: {original_query}
+
+Previous Answer (no citations): 
+{previous_answer}
+
+Follow-up Question: {follow_up_question}
+
+Documents:
+{docs_text}
+
+Your task is to:
+1. Answer the follow-up question based ONLY on the provided documents with proper citations.
+2. Then combine this new information with the previous answer to create a cohesive, integrated response.
+3. Ensure the combined answer flows logically and maintains the most important information at the beginning.
+4. Make sure ALL parts of the original question and follow-up are addressed in the final answer.
+
+Answer (with citations):"""
+
+    def _create_answer_integration_prompt(
+        self, original_query, previous_answer, new_answer_with_citations
+    ):
+        """
+        Create a prompt for integrating a new answer with the previous answer.
+
+        Args:
+            original_query: The original question
+            previous_answer: The previous answer (without citations)
+            new_answer_with_citations: The new answer with citations
+
+        Returns:
+            A prompt for answer integration
+        """
+        return f"""You are an expert editor combining information to create a cohesive, comprehensive answer. Your goal is to integrate new information with a previous answer.
+
+IMPORTANT FORMATTING INSTRUCTIONS:
+1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS. Only the first 300 words will be evaluated.
+2. Begin with a concise, direct answer to the question that captures the essential information.
+3. Structure your answer with the most relevant information first, followed by supporting details.
+4. Be comprehensive but prioritize clarity and relevance in the opening paragraphs.
+
+Original Question: {original_query}
+
+Previous Answer:
+{previous_answer}
+
+New Answer with Citations:
+{new_answer_with_citations}
+
+Your task is to:
+1. Create a unified answer that integrates both the previous answer and the new information.
+2. Ensure logical flow and coherence throughout the combined answer.
+3. Maintain the most important information in the first 300 words.
+4. Remove any redundant information.
+5. Remove all citations ([X]) from the final answer.
+
+Combined Answer:"""
+
+    def extract_question_aspects(self, claim_analysis):
+        """
+        Extract question aspects from the claim analysis.
+
+        Args:
+            claim_analysis: The claim analysis response from the model
+
+        Returns:
+            A list of question aspects
+        """
+        aspects = []
+
+        # Extract aspects using regex
+        aspect_section = re.search(
+            r"QUESTION ASPECTS:(.*?)(?=CLAIM ANALYSIS:|$)", claim_analysis, re.DOTALL
+        )
+
+        if aspect_section:
+            aspect_text = aspect_section.group(1).strip()
+            aspect_lines = [
+                line.strip() for line in aspect_text.split("\n") if line.strip()
+            ]
+
+            for line in aspect_lines:
+                # Extract aspect text from lines like "- Aspect 1: What is X?"
+                match = re.search(r"-\s*(?:Aspect \d+:)?\s*(.*)", line)
+                if match:
+                    aspect = match.group(1).strip()
+                    if aspect:
+                        aspects.append(aspect)
+
+        return aspects
+
+    def extract_unanswered_aspects(self, claim_analysis):
+        """
+        Extract unanswered aspects from the claim analysis.
+
+        Args:
+            claim_analysis: The claim analysis response from the model
+
+        Returns:
+            A list of unanswered aspects
+        """
+        unanswered = []
+
+        # Extract unanswered aspects using regex
+        unanswered_section = re.search(
+            r"UNANSWERED ASPECTS:(.*?)(?=FOLLOW-UP QUESTIONS:|$)",
+            claim_analysis,
+            re.DOTALL,
+        )
+
+        if unanswered_section:
+            unanswered_text = unanswered_section.group(1).strip()
+            unanswered_lines = [
+                line.strip() for line in unanswered_text.split("\n") if line.strip()
+            ]
+
+            for line in unanswered_lines:
+                # Extract aspect text from lines like "- What is X?"
+                match = re.search(r"-\s*(.*)", line)
+                if match:
+                    aspect = match.group(1).strip()
+                    if aspect:
+                        unanswered.append(aspect)
+
+        return unanswered
+
+    def extract_follow_up_questions(self, claim_analysis):
+        """
+        Extract follow-up questions from the claim analysis.
+
+        Args:
+            claim_analysis: The claim analysis response from the model
+
+        Returns:
+            A list of follow-up questions
+        """
+        follow_ups = []
+
+        # Extract follow-up questions using regex
+        follow_up_section = re.search(
+            r"FOLLOW-UP QUESTIONS:(.*?)(?=$)", claim_analysis, re.DOTALL
+        )
+
+        if follow_up_section:
+            follow_up_text = follow_up_section.group(1).strip()
+            follow_up_lines = [
+                line.strip() for line in follow_up_text.split("\n") if line.strip()
+            ]
+
+            for line in follow_up_lines:
+                # Extract question text from lines like "- What is X?"
+                match = re.search(r"-\s*(.*)", line)
+                if match:
+                    question = match.group(1).strip()
+                    if question:
+                        follow_ups.append(question)
+
+        return follow_ups
+
+    def remove_citations(self, text):
+        """
+        Remove citation brackets from the text.
+
+        Args:
+            text: Text with citations
+
+        Returns:
+            Text without citations
+        """
+        return re.sub(r"\s*\[\d+(?:,\s*\d+)*\]", "", text)
+
+    def process_answer(self, query, answer_with_citations, claims, filtered_documents):
+        """
+        Process an answer to check if it fully addresses the question and handle follow-up questions.
+
+        Args:
+            query: The original question
+            answer_with_citations: The answer with citations
+            claims: List of extracted claims with their citations
+            filtered_documents: The filtered documents used to generate the answer
+
+        Returns:
+            Tuple of (final_answer, debug_info)
+        """
+        # Step 1: Perform claim analysis
+        logger.info("Agent 4 performing claim analysis...")
+        claim_analysis_prompt = self._create_claim_analysis_prompt(
+            query, answer_with_citations, claims, filtered_documents
+        )
+        claim_analysis = self.agent.generate(claim_analysis_prompt)
+        logger.info(f"Claim analysis response: {claim_analysis}")
+
+        # Step 2: Extract aspects and follow-up questions
+        question_aspects = self.extract_question_aspects(claim_analysis)
+        unanswered_aspects = self.extract_unanswered_aspects(claim_analysis)
+        follow_up_questions = self.extract_follow_up_questions(claim_analysis)
+
+        logger.info(f"Question aspects: {question_aspects}")
+        logger.info(f"Unanswered aspects: {unanswered_aspects}")
+        logger.info(f"Follow-up questions: {follow_up_questions}")
+
+        # Step 3: Determine if the question is completely answered
+        completely_answered = len(unanswered_aspects) == 0
+        logger.info(f"Question completely answered: {completely_answered}")
+
+        # Step 4: Process follow-up questions iteratively if needed
+        final_answer = self.remove_citations(answer_with_citations)
+        current_answer = final_answer
+        follow_up_answers = []
+        excluded_ids = {doc_id for _, doc_id in filtered_documents}
+
+        if not completely_answered and follow_up_questions:
+            for i, follow_up_q in enumerate(follow_up_questions):
+                logger.info(f"Processing follow-up question {i+1}: {follow_up_q}")
+
+                try:
+                    # Retrieve new documents for follow-up question
+                    new_docs = self.retriever.retrieve(
+                        follow_up_q, top_k=10, exclude_ids=excluded_ids
+                    )
+
+                    # Update excluded IDs
+                    for _, doc_id in new_docs:
+                        excluded_ids.add(doc_id)
+
+                    if new_docs:
+                        # Generate answer for follow-up question
+                        follow_up_prompt = self._create_follow_up_answer_prompt(
+                            query, follow_up_q, new_docs, current_answer
+                        )
+                        follow_up_answer_with_citations = self.agent.generate(
+                            follow_up_prompt
+                        )
+                        logger.info(
+                            f"Follow-up answer with citations: {follow_up_answer_with_citations}"
+                        )
+
+                        # Integrate this answer with the previous answer
+                        integration_prompt = self._create_answer_integration_prompt(
+                            query, current_answer, follow_up_answer_with_citations
+                        )
+                        integrated_answer = self.agent.generate(integration_prompt)
+                        logger.info(f"Integrated answer: {integrated_answer}")
+
+                        # Update current answer for next iteration
+                        current_answer = integrated_answer
+                        follow_up_answers.append(
+                            {
+                                "question": follow_up_q,
+                                "answer_with_citations": follow_up_answer_with_citations,
+                            }
+                        )
+                except Exception as e:
+                    logger.error(f"Error processing follow-up question: {e}")
+
+        # Final answer is the last integrated answer
+        final_answer = current_answer
+
+        # Prepare debug info
+        debug_info = {
+            "claim_analysis": claim_analysis,
+            "question_aspects": question_aspects,
+            "unanswered_aspects": unanswered_aspects,
+            "follow_up_questions": follow_up_questions,
+            "completely_answered": completely_answered,
+            "follow_up_answers": follow_up_answers,
+        }
+
+        return final_answer, debug_info
 
 
 class MAIN_RAG:
@@ -286,7 +686,7 @@ Follow-up Answer (with citations):"""
         return supporting_passages
 
     def answer_query(self, query, choices=None):
-        """Process a query using the enhanced MAIN-RAG framework with citation and judgment."""
+        """Process a query using the enhanced MAIN-RAG framework with improved claim analysis and follow-up handling."""
         logger.info(f"Processing query: {query}")
 
         # Step 1: Retrieve documents
@@ -354,7 +754,7 @@ Follow-up Answer (with citations):"""
             answer_with_citations = self.clean_answer(raw_answer)
             filtered_docs_no_score = all_docs_no_score
 
-        # Extract claims with citations for logging
+        # Extract claims with citations for analysis
         claims = self._extract_claims_with_citations(answer_with_citations)
         logger.info(f"Extracted {len(claims)} claims with citations")
 
@@ -364,106 +764,25 @@ Follow-up Answer (with citations):"""
                 f"Claim {i+1}: {claim['text']} - cited docs: {claim['citations']}"
             )
 
-        # Step 7: Agent-4 judges if the question is completely answered
-        logger.info("Agent-4 judging answer completeness...")
-        judge_prompt = self._create_agent4_prompt(
-            query, answer_with_citations, filtered_docs_no_score
+        # Step 7: Enhanced Agent-4 processes the answer
+        logger.info("Enhanced Agent-4 processing answer...")
+
+        # Initialize the enhanced Agent 4
+        enhanced_agent4 = EnhancedAgent4(self.agent4, self.retriever)
+
+        # Process the answer using the enhanced Agent 4
+        final_answer, judge_debug_info = enhanced_agent4.process_answer(
+            query, answer_with_citations, claims, filtered_docs_no_score
         )
-        judge_response = self.agent4.generate(judge_prompt)
-        logger.info(f"Judge response: {judge_response}")
-
-        # Extract judgment results
-        completely_answered = "COMPLETELY_ANSWERED: Yes" in judge_response
-        logger.info(f"Question completely answered: {completely_answered}")
-
-        # Process follow-up questions if needed
-        follow_up_answers = []
-
-        if not completely_answered:
-            logger.info(
-                "Question not completely answered. Processing follow-up questions..."
-            )
-
-            # Extract follow-up questions
-            follow_up_match = re.search(
-                r"FOLLOW_UP_QUESTIONS:(.*?)(?=COMPLETELY_ANSWERED:|$)",
-                judge_response,
-                re.DOTALL,
-            )
-
-            if follow_up_match:
-                follow_up_text = follow_up_match.group(1).strip()
-                follow_up_questions = [
-                    q.strip() for q in follow_up_text.split("\n") if q.strip()
-                ]
-                logger.info(f"Extracted follow-up questions: {follow_up_questions}")
-
-                # For each follow-up question
-                for i, follow_up_q in enumerate(follow_up_questions):
-                    if not follow_up_q:  # Skip empty questions
-                        continue
-
-                    logger.info(f"Processing follow-up question {i+1}: {follow_up_q}")
-
-                    try:
-                        # Retrieve new documents for follow-up question (excluding previous ids)
-                        new_docs = self.retriever.retrieve(
-                            follow_up_q, top_k=10, exclude_ids=excluded_ids
-                        )
-
-                        # Update excluded IDs
-                        for _, doc_id in new_docs:
-                            excluded_ids.add(doc_id)
-
-                        if new_docs:
-                            # Generate answer for follow-up question
-                            follow_up_prompt = self._create_follow_up_prompt(
-                                query, follow_up_q, new_docs, answer_with_citations
-                            )
-                            follow_up_answer_with_citations = self.agent3.generate(
-                                follow_up_prompt
-                            )
-
-                            # Log the follow-up answer with citations
-                            logger.info(
-                                f"Follow-up answer (with citations): {follow_up_answer_with_citations}"
-                            )
-
-                            # Extract claims from follow-up answer
-                            follow_up_claims = self._extract_claims_with_citations(
-                                follow_up_answer_with_citations
-                            )
-                            logger.info(
-                                f"Extracted {len(follow_up_claims)} claims from follow-up answer"
-                            )
-
-                            # Remove citations for the final answer
-                            follow_up_answer = self._remove_citations(
-                                follow_up_answer_with_citations
-                            )
-                            follow_up_answers.append(follow_up_answer)
-                    except Exception as e:
-                        logger.error(f"Error processing follow-up question: {e}")
-
-        # Combine answers and remove citations for final answer
-        answer_with_citations_for_log = answer_with_citations  # Save for logging
-        final_answer = self._remove_citations(answer_with_citations)
-
-        if follow_up_answers:
-            final_answer = self._combine_answers(final_answer, follow_up_answers)
-
-        # Make sure we never return empty answers
-        if not final_answer or final_answer.strip() == "":
-            final_answer = "no answer provided"
 
         # Format supporting passages in order of importance
         supporting_passages = self.format_supporting_passages(
             filtered_docs_no_score, claims
         )
 
-        # Log the final answer with and without citations
-        logger.info(f"Answer with citations: {answer_with_citations_for_log}")
-        logger.info(f"Final answer (without citations): {final_answer}")
+        # Log the final answer
+        logger.info(f"Answer with citations: {answer_with_citations}")
+        logger.info(f"Final answer (after follow-up processing): {final_answer}")
         logger.info(f"Supporting passages: {supporting_passages}")
 
         # Return the answer and debug information
@@ -477,12 +796,16 @@ Follow-up Answer (with citations):"""
             ],
             "supporting_passages": supporting_passages,
             "raw_answer": raw_answer,
-            "answer_with_citations": answer_with_citations_for_log,
-            "judge_response": judge_response,
-            "completely_answered": completely_answered,
-            "follow_up_answers": follow_up_answers,
+            "answer_with_citations": answer_with_citations,
             "claims": claims,
             "agent3_prompt": prompt,
+            # Add the enhanced Agent 4 debug info
+            "claim_analysis": judge_debug_info["claim_analysis"],
+            "question_aspects": judge_debug_info["question_aspects"],
+            "unanswered_aspects": judge_debug_info["unanswered_aspects"],
+            "follow_up_questions": judge_debug_info["follow_up_questions"],
+            "completely_answered": judge_debug_info["completely_answered"],
+            "follow_up_answers": judge_debug_info["follow_up_answers"],
         }
 
         return final_answer, debug_info
