@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+import datetime
 from tqdm import tqdm
 import os
 import logging
@@ -212,10 +213,12 @@ def main():
         except Exception as e:
             logger.error(f"Error processing question: {e}", exc_info=True)
 
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # Save results
     if debug_results:
         debug_output_file = (
-            f"results/debug/enhanced_main_rag_n{args.n}_a{args.alpha}.json"
+            f"results/debug/enhanced_main_rag_n{args.n}_a{args.alpha}_{timestamp}.json"
         )
         with open(debug_output_file, "w", encoding="utf-8") as f:
             json.dump(debug_results, f, indent=2)
@@ -223,7 +226,7 @@ def main():
 
     if formal_results:
         formal_output_file = (
-            f"results/formal/enhanced_main_rag_n{args.n}_a{args.alpha}.json"
+            f"results/formal/enhanced_main_rag_n{args.n}_a{args.alpha}_{timestamp}.json"
         )
         with open(formal_output_file, "w", encoding="utf-8") as f:
             json.dump(formal_results, f, indent=2)
