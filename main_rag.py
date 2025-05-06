@@ -16,8 +16,8 @@ logger = logging.getLogger("MAIN_RAG")
 
 class EnhancedAgent4:
     """
-    Enhanced Agent 4 implementation for more granular claim analysis and improved
-    follow-up question processing.
+    Enhanced Agent 4 implementation that handles both naturally multi-part and
+    single questions while analyzing claims against question components.
     """
 
     def __init__(self, agent_model, retriever):
@@ -36,6 +36,9 @@ class EnhancedAgent4:
     ):
         """
         Create a prompt for analyzing individual claims against the question.
+
+        This prompt distinguishes between naturally multi-part questions and single questions.
+        It evaluates whether claims address the natural components of the question.
 
         Args:
             query: The original question
@@ -62,12 +65,13 @@ class EnhancedAgent4:
             ]
         )
 
-        return f"""You are a meticulous judge evaluating whether a question has been fully answered by analyzing each claim in the answer. Your analysis will be comprehensive and detailed.
+        return f"""You are a meticulous judge evaluating whether a question has been fully answered by analyzing each claim in the answer.
 
 TASK:
-1. IDENTIFY ASPECTS: Break down the original question into its component aspects or sub-questions.
-2. CLAIM ANALYSIS: For each claim in the answer, determine which aspect(s) of the question it addresses, if any.
-3. COVERAGE ASSESSMENT: Identify which aspects of the question are fully answered, partially answered, or not answered at all.
+1. STRUCTURE ANALYSIS: First, determine if the original question naturally contains multiple distinct sub-questions or is a single question. DO NOT artificially break a single question into parts.
+2. QUESTION PARSING: If the question naturally contains multiple sub-questions, identify each one. If it's a single question, treat it as one component.
+3. CLAIM ANALYSIS: For each claim in the answer, determine which component(s) of the question it addresses, if any.
+4. COVERAGE ASSESSMENT: Identify which components of the question are fully answered, partially answered, or not answered at all.
 
 Original Question: {query}
 
@@ -82,26 +86,28 @@ Available Documents:
 
 Please provide your analysis in the following format:
 
-QUESTION ASPECTS:
-- Aspect 1: [First aspect/sub-question of the original query]
-- Aspect 2: [Second aspect/sub-question]
+QUESTION STRUCTURE: [SINGLE/MULTIPLE]
+
+QUESTION COMPONENTS:
+- Component 1: [First sub-question or the single question itself]
+- Component 2: [Second sub-question, if applicable]
 ...
 
 CLAIM ANALYSIS:
-- Claim 1: [Whether this claim addresses any aspects, and which ones]
-- Claim 2: [Whether this claim addresses any aspects, and which ones]
+- Claim 1: [Whether this claim addresses any components, and which ones]
+- Claim 2: [Whether this claim addresses any components, and which ones]
 ...
 
 COVERAGE ASSESSMENT:
-- Aspect 1: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
-- Aspect 2: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
+- Component 1: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
+- Component 2: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
 ...
 
-UNANSWERED ASPECTS:
-- [List aspects that are partially or not answered]
+UNANSWERED COMPONENTS:
+- [List components that are partially or not answered]
 
 FOLLOW-UP QUESTIONS:
-- [Rewrite each unanswered aspect as a complete, standalone question that preserves context]
+- [Rewrite each unanswered component as a complete, standalone question that preserves context from the original question]
 
 Your analysis:"""
 
@@ -128,10 +134,10 @@ Your analysis:"""
             ]
         )
 
-        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question and integrate it with a previous answer to create a cohesive response.
+        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question based on the documents provided.
 
 IMPORTANT FORMATTING INSTRUCTIONS:
-1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS of the final combined answer.
+1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS of your answer.
 2. Begin with a concise, direct answer to the follow-up question.
 3. Structure your answer with the most relevant information first, followed by supporting details.
 4. Be comprehensive but prioritize clarity and relevance.
@@ -155,9 +161,9 @@ Documents:
 
 Your task is to:
 1. Answer the follow-up question based ONLY on the provided documents with proper citations.
-2. Then combine this new information with the previous answer to create a cohesive, integrated response.
-3. Ensure the combined answer flows logically and maintains the most important information at the beginning.
-4. Make sure ALL parts of the original question and follow-up are addressed in the final answer.
+2. Only include information that directly answers the follow-up question.
+3. If the documents don't contain information to answer the follow-up question, state that clearly.
+4. DO NOT attempt to answer any other parts of the original question - focus only on the follow-up.
 
 Answer (with citations):"""
 
@@ -179,7 +185,7 @@ Answer (with citations):"""
 
 IMPORTANT FORMATTING INSTRUCTIONS:
 1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS. Only the first 300 words will be evaluated.
-2. Begin with a concise, direct answer to the question that captures the essential information.
+2. Begin with a concise, direct answer that captures the essential information.
 3. Structure your answer with the most relevant information first, followed by supporting details.
 4. Be comprehensive but prioritize clarity and relevance in the opening paragraphs.
 
@@ -197,57 +203,75 @@ Your task is to:
 3. Maintain the most important information in the first 300 words.
 4. Remove any redundant information.
 5. Remove all citations ([X]) from the final answer.
+6. Make the answer read as a single, coherent response rather than separate pieces.
 
 Combined Answer:"""
 
-    def extract_question_aspects(self, claim_analysis):
+    def extract_question_structure(self, claim_analysis):
         """
-        Extract question aspects from the claim analysis.
+        Extract whether the question is naturally single or multiple.
 
         Args:
             claim_analysis: The claim analysis response from the model
 
         Returns:
-            A list of question aspects
+            String: "SINGLE" or "MULTIPLE"
         """
-        aspects = []
+        structure_section = re.search(
+            r"QUESTION STRUCTURE:\s*(SINGLE|MULTIPLE)", claim_analysis, re.DOTALL
+        )
+        if structure_section and structure_section.group(1):
+            return structure_section.group(1)
+        return "SINGLE"  # Default to single if not found
 
-        # Extract aspects using regex
-        aspect_section = re.search(
-            r"QUESTION ASPECTS:(.*?)(?=CLAIM ANALYSIS:|$)", claim_analysis, re.DOTALL
+    def extract_question_components(self, claim_analysis):
+        """
+        Extract question components from the claim analysis.
+
+        Args:
+            claim_analysis: The claim analysis response from the model
+
+        Returns:
+            A list of question components (sub-questions or single question)
+        """
+        components = []
+
+        # Extract components using regex
+        component_section = re.search(
+            r"QUESTION COMPONENTS:(.*?)(?=CLAIM ANALYSIS:|$)", claim_analysis, re.DOTALL
         )
 
-        if aspect_section:
-            aspect_text = aspect_section.group(1).strip()
-            aspect_lines = [
-                line.strip() for line in aspect_text.split("\n") if line.strip()
+        if component_section:
+            component_text = component_section.group(1).strip()
+            component_lines = [
+                line.strip() for line in component_text.split("\n") if line.strip()
             ]
 
-            for line in aspect_lines:
-                # Extract aspect text from lines like "- Aspect 1: What is X?"
-                match = re.search(r"-\s*(?:Aspect \d+:)?\s*(.*)", line)
+            for line in component_lines:
+                # Extract component text from lines like "- Component 1: What is X?"
+                match = re.search(r"-\s*(?:Component \d+:)?\s*(.*)", line)
                 if match:
-                    aspect = match.group(1).strip()
-                    if aspect:
-                        aspects.append(aspect)
+                    component = match.group(1).strip()
+                    if component:
+                        components.append(component)
 
-        return aspects
+        return components
 
-    def extract_unanswered_aspects(self, claim_analysis):
+    def extract_unanswered_components(self, claim_analysis):
         """
-        Extract unanswered aspects from the claim analysis.
+        Extract unanswered components from the claim analysis.
 
         Args:
             claim_analysis: The claim analysis response from the model
 
         Returns:
-            A list of unanswered aspects
+            A list of unanswered components
         """
         unanswered = []
 
-        # Extract unanswered aspects using regex
+        # Extract unanswered components using regex
         unanswered_section = re.search(
-            r"UNANSWERED ASPECTS:(.*?)(?=FOLLOW-UP QUESTIONS:|$)",
+            r"UNANSWERED COMPONENTS:(.*?)(?=FOLLOW-UP QUESTIONS:|$)",
             claim_analysis,
             re.DOTALL,
         )
@@ -259,12 +283,12 @@ Combined Answer:"""
             ]
 
             for line in unanswered_lines:
-                # Extract aspect text from lines like "- What is X?"
+                # Extract component text from lines like "- What is X?"
                 match = re.search(r"-\s*(.*)", line)
                 if match:
-                    aspect = match.group(1).strip()
-                    if aspect:
-                        unanswered.append(aspect)
+                    component = match.group(1).strip()
+                    if component:
+                        unanswered.append(component)
 
         return unanswered
 
@@ -301,6 +325,45 @@ Combined Answer:"""
 
         return follow_ups
 
+    def extract_coverage_assessment(self, claim_analysis):
+        """
+        Extract coverage assessment for each component from the claim analysis.
+
+        Args:
+            claim_analysis: The claim analysis response from the model
+
+        Returns:
+            Dictionary mapping components to their coverage status
+        """
+        coverage = {}
+
+        # Extract coverage assessment using regex
+        coverage_section = re.search(
+            r"COVERAGE ASSESSMENT:(.*?)(?=UNANSWERED COMPONENTS:|$)",
+            claim_analysis,
+            re.DOTALL,
+        )
+
+        if coverage_section:
+            coverage_text = coverage_section.group(1).strip()
+            coverage_lines = [
+                line.strip() for line in coverage_text.split("\n") if line.strip()
+            ]
+
+            for line in coverage_lines:
+                # Extract component and status from lines like "- Component 1: FULLY ANSWERED"
+                match = re.search(
+                    r"-\s*(?:Component \d+:)?\s*(.*?):\s*(FULLY ANSWERED|PARTIALLY ANSWERED|NOT ANSWERED)",
+                    line,
+                )
+                if match:
+                    component = match.group(1).strip()
+                    status = match.group(2).strip()
+                    if component:
+                        coverage[component] = status
+
+        return coverage
+
     def remove_citations(self, text):
         """
         Remove citation brackets from the text.
@@ -316,6 +379,9 @@ Combined Answer:"""
     def process_answer(self, query, answer_with_citations, claims, filtered_documents):
         """
         Process an answer to check if it fully addresses the question and handle follow-up questions.
+
+        This method distinguishes between naturally multi-part questions and single questions,
+        and processes them accordingly.
 
         Args:
             query: The original question
@@ -334,17 +400,21 @@ Combined Answer:"""
         claim_analysis = self.agent.generate(claim_analysis_prompt)
         logger.info(f"Claim analysis response: {claim_analysis}")
 
-        # Step 2: Extract aspects and follow-up questions
-        question_aspects = self.extract_question_aspects(claim_analysis)
-        unanswered_aspects = self.extract_unanswered_aspects(claim_analysis)
+        # Step 2: Extract question structure and components
+        question_structure = self.extract_question_structure(claim_analysis)
+        question_components = self.extract_question_components(claim_analysis)
+        unanswered_components = self.extract_unanswered_components(claim_analysis)
         follow_up_questions = self.extract_follow_up_questions(claim_analysis)
+        coverage_assessment = self.extract_coverage_assessment(claim_analysis)
 
-        logger.info(f"Question aspects: {question_aspects}")
-        logger.info(f"Unanswered aspects: {unanswered_aspects}")
+        logger.info(f"Question structure: {question_structure}")
+        logger.info(f"Question components: {question_components}")
+        logger.info(f"Unanswered components: {unanswered_components}")
         logger.info(f"Follow-up questions: {follow_up_questions}")
+        logger.info(f"Coverage assessment: {coverage_assessment}")
 
         # Step 3: Determine if the question is completely answered
-        completely_answered = len(unanswered_aspects) == 0
+        completely_answered = len(unanswered_components) == 0
         logger.info(f"Question completely answered: {completely_answered}")
 
         # Step 4: Process follow-up questions iteratively if needed
@@ -363,7 +433,7 @@ Combined Answer:"""
                         follow_up_q, top_k=10, exclude_ids=excluded_ids
                     )
 
-                    # Update excluded IDs
+                    # Update excluded IDs to avoid duplicate documents
                     for _, doc_id in new_docs:
                         excluded_ids.add(doc_id)
 
@@ -403,8 +473,10 @@ Combined Answer:"""
         # Prepare debug info
         debug_info = {
             "claim_analysis": claim_analysis,
-            "question_aspects": question_aspects,
-            "unanswered_aspects": unanswered_aspects,
+            "question_structure": question_structure,
+            "question_components": question_components,
+            "unanswered_components": unanswered_components,
+            "coverage_assessment": coverage_assessment,
             "follow_up_questions": follow_up_questions,
             "completely_answered": completely_answered,
             "follow_up_answers": follow_up_answers,
@@ -801,30 +873,13 @@ Follow-up Answer (with citations):"""
             "agent3_prompt": prompt,
             # Add the enhanced Agent 4 debug info
             "claim_analysis": judge_debug_info["claim_analysis"],
-            "question_aspects": judge_debug_info["question_aspects"],
-            "unanswered_aspects": judge_debug_info["unanswered_aspects"],
+            "question_structure": judge_debug_info["question_structure"],
+            "question_components": judge_debug_info["question_components"],
+            "unanswered_components": judge_debug_info["unanswered_components"],
+            "coverage_assessment": judge_debug_info.get("coverage_assessment", {}),
             "follow_up_questions": judge_debug_info["follow_up_questions"],
             "completely_answered": judge_debug_info["completely_answered"],
             "follow_up_answers": judge_debug_info["follow_up_answers"],
         }
 
         return final_answer, debug_info
-
-    def extract_multiple_choice_answer(self, text):
-        """Extract just the letter choice from a multiple-choice answer."""
-        if not text:
-            return "B"  # Default to B if empty
-
-        text = text.strip().upper()
-
-        # If the text starts with A, B, C, or D, take just the letter
-        if text and text[0] in "ABCD":
-            return text[0]
-
-        # Otherwise search for a letter in the text
-        for char in text:
-            if char in "ABCD":
-                return char
-
-        # Default to B if no letter found
-        return "B"
