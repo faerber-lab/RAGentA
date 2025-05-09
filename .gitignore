@@ -94,3 +94,5 @@ results/*
 *.swo
 *~
 .nfs*
+*.txt
+split_questions/

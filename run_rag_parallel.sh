@@ -20,7 +20,7 @@ python split_questions.py --input_file $QUESTION_FILE --output_dir $SPLIT_DIR --
 declare -a JOB_IDS
 
 # Submit jobs for each split
-for SPLIT_FILE in $SPLIT_DIR/questions_split_*.jsonl; do
+for SPLIT_FILE in $SPLIT_DIR/09.05_questions_split_*.jsonl; do
     # Extract split number for naming
     SPLIT_NAME=$(basename $SPLIT_FILE .jsonl)
     
