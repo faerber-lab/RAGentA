@@ -68,9 +68,19 @@ class EnhancedAgent4:
         return f"""You are a meticulous judge evaluating whether a question has been fully answered by analyzing each claim in the answer.
 
 TASK:
-1. STRUCTURE ANALYSIS: First, determine if the original question naturally contains multiple distinct sub-questions or is a single question. DO NOT artificially break a single question into parts.
-2. QUESTION PARSING: If the question naturally contains multiple sub-questions, identify each one. If it's a single question, treat it as one component.
+1. STRUCTURE ANALYSIS: First, determine if the original question naturally contains multiple distinct components or is a single question. 
+   IMPORTANT: Questions containing "and" that connect different question words (what, when, where, why, how) should be classified as MULTIPLE.
+   For example:
+   - "When did X happen and what caused it?" → MULTIPLE (asks for timing AND causes)
+   - "What are X and how do they work?" → MULTIPLE (asks for definition AND function)
+   - "Who did X and why?" → MULTIPLE (asks for person AND reason)
+
+2. QUESTION PARSING: If the question contains multiple components, identify each one separately.
+   For example:
+   - "When did Lyons become important and what triggered this?" → Component 1: When did Lyons become important? Component 2: What triggered Lyons' importance?
+
 3. CLAIM ANALYSIS: For each claim in the answer, determine which component(s) of the question it addresses, if any.
+
 4. COVERAGE ASSESSMENT: Identify which components of the question are fully answered, partially answered, or not answered at all.
 
 Original Question: {query}
@@ -89,8 +99,8 @@ Please provide your analysis in the following format:
 QUESTION STRUCTURE: [SINGLE/MULTIPLE]
 
 QUESTION COMPONENTS:
-- Component 1: [First sub-question or the single question itself]
-- Component 2: [Second sub-question, if applicable]
+- Component 1: [First component/sub-question of the original query]
+- Component 2: [Second component/sub-question, if applicable]
 ...
 
 CLAIM ANALYSIS:
@@ -107,7 +117,7 @@ UNANSWERED COMPONENTS:
 - [List components that are partially or not answered]
 
 FOLLOW-UP QUESTIONS:
-- [Rewrite each unanswered component as a complete, standalone question that preserves context from the original question]
+- [Rewrite each unanswered component as a complete, standalone question that preserves context]
 
 Your analysis:"""
 
@@ -290,6 +300,10 @@ Combined Answer:"""
                     if component:
                         unanswered.append(component)
 
+        # Check if the only element is "None" AFTER populating the list
+        if unanswered and len(unanswered) == 1 and unanswered[0].lower() == "none":
+            return []  # Return empty list instead of ["None"]
+
         return unanswered
 
     def extract_follow_up_questions(self, claim_analysis):
@@ -322,6 +336,10 @@ Combined Answer:"""
                     question = match.group(1).strip()
                     if question:
                         follow_ups.append(question)
+
+        # Check if the only element is "None" AFTER populating the list
+        if follow_ups and len(follow_ups) == 1 and follow_ups[0].lower() == "none":
+            return []  # Return empty list instead of ["None"]
 
         return follow_ups
 
