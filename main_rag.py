@@ -16,7 +16,7 @@ logger = logging.getLogger("MAIN_RAG")
 
 class EnhancedAgent4:
     """
-    Enhanced Agent 4 implementation that handles both naturally multi-part and
+    Enhanced Agent 4 implementation that handles both naturally multi-part and 
     single questions while analyzing claims against question components.
     """
 
@@ -36,7 +36,7 @@ class EnhancedAgent4:
     ):
         """
         Create a prompt for analyzing individual claims against the question.
-
+        
         This prompt distinguishes between naturally multi-part questions and single questions.
         It evaluates whether claims address the natural components of the question.
 
@@ -143,7 +143,7 @@ IMPORTANT FORMATTING INSTRUCTIONS:
 4. Be comprehensive but prioritize clarity and relevance.
 
 CITATION INSTRUCTIONS:
-1. For each claim or statement in your answer, add a inline citation in square brackets [X] immediately after the sentence.
+1. For each claim or statement in your answer, add a citation in square brackets [X] immediately after the sentence.
 2. DO NOT refer to documents in the text like "Document 1 states..." or "According to Document 2...".
 3. Use ONLY the [X] format where X is the document number.
 4. If multiple documents support a claim, cite all of them like [1,3,5].
@@ -202,7 +202,7 @@ Your task is to:
 2. Ensure logical flow and coherence throughout the combined answer.
 3. Maintain the most important information in the first 300 words.
 4. Remove any redundant information.
-5. Remove all inline citations ([X]) from the final answer.
+5. Remove all citations ([X]) from the final answer.
 6. Make the answer read as a single, coherent response rather than separate pieces.
 
 Combined Answer:"""
@@ -218,7 +218,9 @@ Combined Answer:"""
             String: "SINGLE" or "MULTIPLE"
         """
         structure_section = re.search(
-            r"QUESTION STRUCTURE:\s*(SINGLE|MULTIPLE)", claim_analysis, re.DOTALL
+            r"QUESTION STRUCTURE:\s*(SINGLE|MULTIPLE)",
+            claim_analysis, 
+            re.DOTALL
         )
         if structure_section and structure_section.group(1):
             return structure_section.group(1)
@@ -290,10 +292,6 @@ Combined Answer:"""
                     if component:
                         unanswered.append(component)
 
-        # Check if the only element is "None" AFTER populating the list
-        if unanswered and len(unanswered) == 1 and unanswered[0].lower() == "none":
-            return []  # Return empty list instead of ["None"]
-        
         return unanswered
 
     def extract_follow_up_questions(self, claim_analysis):
@@ -327,10 +325,6 @@ Combined Answer:"""
                     if question:
                         follow_ups.append(question)
 
-        # Check if the only element is "None" AFTER populating the list
-        if follow_ups and len(follow_ups) == 1 and follow_ups[0].lower() == "none":
-            return []  # Return empty list instead of ["None"]
-        
         return follow_ups
 
     def extract_coverage_assessment(self, claim_analysis):
@@ -360,10 +354,7 @@ Combined Answer:"""
 
             for line in coverage_lines:
                 # Extract component and status from lines like "- Component 1: FULLY ANSWERED"
-                match = re.search(
-                    r"-\s*(?:Component \d+:)?\s*(.*?):\s*(FULLY ANSWERED|PARTIALLY ANSWERED|NOT ANSWERED)",
-                    line,
-                )
+                match = re.search(r"-\s*(?:Component \d+:)?\s*(.*?):\s*(FULLY ANSWERED|PARTIALLY ANSWERED|NOT ANSWERED)", line)
                 if match:
                     component = match.group(1).strip()
                     status = match.group(2).strip()
@@ -387,7 +378,7 @@ Combined Answer:"""
     def process_answer(self, query, answer_with_citations, claims, filtered_documents):
         """
         Process an answer to check if it fully addresses the question and handle follow-up questions.
-
+        
         This method distinguishes between naturally multi-part questions and single questions,
         and processes them accordingly.
 
@@ -453,9 +444,7 @@ Combined Answer:"""
                         follow_up_answer_with_citations = self.agent.generate(
                             follow_up_prompt
                         )
-                        logger.info(
-                            f"Follow-up answer with citations: {follow_up_answer_with_citations}"
-                        )
+                        logger.info(f"Follow-up answer with citations: {follow_up_answer_with_citations}")
 
                         # Integrate this answer with the previous answer
                         integration_prompt = self._create_answer_integration_prompt(
