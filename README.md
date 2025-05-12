@@ -18,7 +18,7 @@ RAGent is an advanced framework for Retrieval-Augmented Generation that improves
 ## Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/tobiasschreieder/LiveRAG.git
+git clone git@github.com:tobiasschreieder/LiveRAG.git
 cd LiveRAG
 ```
 3. Create and activate a virtual environment:
@@ -137,6 +137,6 @@ If you use RAGent in your research, please cite:
   title = {RAGent: Enhanced Retrieval-Augmented Generation Framework},
   year = {2025},
   publisher = {GitHub},
-  url = {https://github.com/tobiasschreieder/LiveRAG.git}
+  url = {git@github.com:tobiasschreieder/LiveRAG.git}
 }
 ```
