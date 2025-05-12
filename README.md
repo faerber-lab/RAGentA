@@ -17,7 +17,11 @@ RAGent is an advanced framework for Retrieval-Augmented Generation that improves
 
 ## Installation
 1. Clone the repository:
-2. Create and activate a virtual environment:
+```bash
+git clone https://github.com/tobiasschreieder/LiveRAG.git
+cd LiveRAG
+```
+3. Create and activate a virtual environment:
 ```python
 python -m venv env
 source env/bin/activate  # On Windows, use: env\Scripts\activate
@@ -133,6 +137,6 @@ If you use RAGent in your research, please cite:
   title = {RAGent: Enhanced Retrieval-Augmented Generation Framework},
   year = {2025},
   publisher = {GitHub},
-  url = {https://github.com/yourusername/RAGent}
+  url = {https://github.com/tobiasschreieder/LiveRAG.git}
 }
 ```
