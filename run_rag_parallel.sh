@@ -3,9 +3,9 @@
 
 # Parameters
 QUESTION_FILE="cleaned_500_questions.jsonl"  # Input JSONL file
-NUM_SPLITS=10                            # Number of splits to create
+NUM_SPLITS=5                            # Number of splits to create
 SPLIT_DIR="split_questions"              # Directory to store split files
-RESULTS_DIR="results"                    # Directory to store results
+RESULTS_DIR="results_test"                    # Directory to store results
 
 # Ensure directories exist
 mkdir -p $SPLIT_DIR
@@ -20,7 +20,7 @@ python split_questions.py --input_file $QUESTION_FILE --output_dir $SPLIT_DIR --
 declare -a JOB_IDS
 
 # Submit jobs for each split
-for SPLIT_FILE in $SPLIT_DIR/09.05_questions_split_*.jsonl; do
+for SPLIT_FILE in $SPLIT_DIR/questions_split_*.jsonl; do
     # Extract split number for naming
     SPLIT_NAME=$(basename $SPLIT_FILE .jsonl)
     

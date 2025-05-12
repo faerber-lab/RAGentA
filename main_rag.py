@@ -16,8 +16,8 @@ logger = logging.getLogger("MAIN_RAG")
 
 class EnhancedAgent4:
     """
-    Enhanced Agent 4 implementation that handles both naturally multi-part and 
-    single questions while analyzing claims against question components.
+    Enhanced Agent 4 implementation for claim analysis and improved
+    follow-up question processing.
     """
 
     def __init__(self, agent_model, retriever):
@@ -31,39 +31,21 @@ class EnhancedAgent4:
         self.agent = agent_model
         self.retriever = retriever
 
-    def _create_claim_analysis_prompt(
-        self, query, answer_with_citations, claims, filtered_documents
-    ):
+    def _create_claim_analysis_prompt(self, query, answer_with_citations, claims, filtered_documents):
         """
-        Create a prompt for analyzing individual claims against the question.
-        
-        This prompt distinguishes between naturally multi-part questions and single questions.
-        It evaluates whether claims address the natural components of the question.
-
-        Args:
-            query: The original question
-            answer_with_citations: The answer with citations
-            claims: List of extracted claims with their citations
-            filtered_documents: The filtered documents used to generate the answer
-
-        Returns:
-            A prompt for claim analysis
+        Create a prompt for analyzing claims against the question.
         """
         # Format documents with index
-        docs_text = "\n\n".join(
-            [
-                f"Document {i+1}: {doc_text}"
-                for i, (doc_text, _) in enumerate(filtered_documents)
-            ]
-        )
+        docs_text = "\n\n".join([
+            f"Document {i+1}: {doc_text}"
+            for i, (doc_text, _) in enumerate(filtered_documents)
+        ])
 
         # Format claims with their citations
-        claims_text = "\n\n".join(
-            [
-                f"Claim {i+1}: {claim['text']} [Citations: {', '.join(map(str, claim['citations']))}]"
-                for i, claim in enumerate(claims)
-            ]
-        )
+        claims_text = "\n\n".join([
+            f"Claim {i+1}: {claim['text']} [Citations: {', '.join(map(str, claim['citations']))}]"
+            for i, claim in enumerate(claims)
+        ])
 
         return f"""You are a meticulous judge evaluating whether a question has been fully answered by analyzing each claim in the answer.
 
@@ -72,6 +54,7 @@ TASK:
 2. QUESTION PARSING: If the question naturally contains multiple sub-questions, identify each one. If it's a single question, treat it as one component.
 3. CLAIM ANALYSIS: For each claim in the answer, determine which component(s) of the question it addresses, if any.
 4. COVERAGE ASSESSMENT: Identify which components of the question are fully answered, partially answered, or not answered at all.
+5. CLAIM RELEVANCE: Evaluate if each claim directly contributes to answering the question. Identify any irrelevant claims.
 
 Original Question: {query}
 
@@ -103,91 +86,51 @@ COVERAGE ASSESSMENT:
 - Component 2: [FULLY ANSWERED / PARTIALLY ANSWERED / NOT ANSWERED]
 ...
 
+CLAIMS TO REMOVE:
+[List the numbers of any claims that don't directly answer the question]
+
 UNANSWERED COMPONENTS:
 - [List components that are partially or not answered]
 
 FOLLOW-UP QUESTIONS:
-- [Rewrite each unanswered component as a complete, standalone question that preserves context from the original question]
+- [Rewrite each unanswered component as a complete, standalone question that preserves context]
 
 Your analysis:"""
 
-    def _create_follow_up_answer_prompt(
-        self, original_query, follow_up_question, filtered_documents, previous_answer
-    ):
+    def _create_follow_up_answer_prompt(self, original_query, follow_up_question, filtered_documents, previous_answer):
         """
         Create prompt for generating an answer to a follow-up question that integrates well with previous answers.
-
-        Args:
-            original_query: The original question
-            follow_up_question: The follow-up question
-            filtered_documents: The documents retrieved for this follow-up
-            previous_answer: The previous answer (without citations)
-
-        Returns:
-            A prompt for generating a follow-up answer
         """
         # Format documents with index
-        docs_text = "\n\n".join(
-            [
-                f"Document {i+1}: {doc_text}"
-                for i, (doc_text, _) in enumerate(filtered_documents)
-            ]
-        )
+        docs_text = "\n\n".join([
+            f"Document {i+1}: {doc_text}"
+            for i, (doc_text, _) in enumerate(filtered_documents)
+        ])
 
-        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question based on the documents provided.
-
-IMPORTANT FORMATTING INSTRUCTIONS:
-1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS of your answer.
-2. Begin with a concise, direct answer to the follow-up question.
-3. Structure your answer with the most relevant information first, followed by supporting details.
-4. Be comprehensive but prioritize clarity and relevance.
-
-CITATION INSTRUCTIONS:
-1. For each claim or statement in your answer, add a citation in square brackets [X] immediately after the sentence.
-2. DO NOT refer to documents in the text like "Document 1 states..." or "According to Document 2...".
-3. Use ONLY the [X] format where X is the document number.
-4. If multiple documents support a claim, cite all of them like [1,3,5].
-5. Every factual claim must have a citation.
+        return f"""You are an accurate and reliable AI assistant. Your task is to answer a follow-up question based on the provided documents.
 
 Original Question: {original_query}
-
-Previous Answer (no citations): 
-{previous_answer}
-
+Previous Answer: {previous_answer}
 Follow-up Question: {follow_up_question}
 
 Documents:
 {docs_text}
 
-Your task is to:
-1. Answer the follow-up question based ONLY on the provided documents with proper citations.
-2. Only include information that directly answers the follow-up question.
-3. If the documents don't contain information to answer the follow-up question, state that clearly.
-4. DO NOT attempt to answer any other parts of the original question - focus only on the follow-up.
+IMPORTANT:
+1. Answer the follow-up question ONLY if the documents contain the information.
+2. If the documents don't contain the necessary information, explicitly state that you cannot answer this part based on the available information.
+3. For each claim in your answer, add a citation in square brackets [X] where X is the document number.
+4. NEVER mention documents in your text (like "Document 1 states...").
+5. ONLY include information that directly addresses the follow-up question.
+6. Be specific about which documents support each claim - do NOT cite all documents for every claim.
 
-Answer (with citations):"""
+Follow-up Answer (with citations):"""
 
-    def _create_answer_integration_prompt(
-        self, original_query, previous_answer, new_answer_with_citations
-    ):
+    def _create_answer_integration_prompt(self, original_query, previous_answer, new_answer_with_citations):
         """
         Create a prompt for integrating a new answer with the previous answer.
-
-        Args:
-            original_query: The original question
-            previous_answer: The previous answer (without citations)
-            new_answer_with_citations: The new answer with citations
-
-        Returns:
-            A prompt for answer integration
         """
-        return f"""You are an expert editor combining information to create a cohesive, comprehensive answer. Your goal is to integrate new information with a previous answer.
-
-IMPORTANT FORMATTING INSTRUCTIONS:
-1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS. Only the first 300 words will be evaluated.
-2. Begin with a concise, direct answer that captures the essential information.
-3. Structure your answer with the most relevant information first, followed by supporting details.
-4. Be comprehensive but prioritize clarity and relevance in the opening paragraphs.
+        return f"""You are an expert editor combining information to create a cohesive, comprehensive answer.
 
 Original Question: {original_query}
 
@@ -197,26 +140,18 @@ Previous Answer:
 New Answer with Citations:
 {new_answer_with_citations}
 
-Your task is to:
+Your task:
 1. Create a unified answer that integrates both the previous answer and the new information.
-2. Ensure logical flow and coherence throughout the combined answer.
-3. Maintain the most important information in the first 300 words.
+2. The new answer should appear as a natural extension of the previous answer.
+3. Ensure logical flow and coherence throughout the combined answer.
 4. Remove any redundant information.
-5. Remove all citations ([X]) from the final answer.
-6. Make the answer read as a single, coherent response rather than separate pieces.
+5. Do NOT mention that you're combining answers or adding new information.
+6. Keep all citation markers [X] in the integrated answer.
 
-Combined Answer:"""
+Combined Answer (with citations):"""
 
     def extract_question_structure(self, claim_analysis):
-        """
-        Extract whether the question is naturally single or multiple.
-
-        Args:
-            claim_analysis: The claim analysis response from the model
-
-        Returns:
-            String: "SINGLE" or "MULTIPLE"
-        """
+        """Extract whether the question is naturally single or multiple."""
         structure_section = re.search(
             r"QUESTION STRUCTURE:\s*(SINGLE|MULTIPLE)",
             claim_analysis, 
@@ -227,15 +162,7 @@ Combined Answer:"""
         return "SINGLE"  # Default to single if not found
 
     def extract_question_components(self, claim_analysis):
-        """
-        Extract question components from the claim analysis.
-
-        Args:
-            claim_analysis: The claim analysis response from the model
-
-        Returns:
-            A list of question components (sub-questions or single question)
-        """
+        """Extract question components from the claim analysis."""
         components = []
 
         # Extract components using regex
@@ -259,16 +186,50 @@ Combined Answer:"""
 
         return components
 
-    def extract_unanswered_components(self, claim_analysis):
+    def determine_if_completely_answered(self, claim_analysis, unanswered_components):
         """
-        Extract unanswered components from the claim analysis.
-
+        Determine if the question is completely answered with better handling of edge cases.
+        
         Args:
-            claim_analysis: The claim analysis response from the model
-
+            claim_analysis: The full claim analysis text
+            unanswered_components: The already extracted unanswered components list
+            
         Returns:
-            A list of unanswered components
+            Boolean indicating if question is completely answered
         """
+        # First check the explicit COMPLETELY_ANSWERED field if available
+        completely_answered_match = re.search(
+            r"COMPLETELY_ANSWERED:\s*(Yes|No)", 
+            claim_analysis, 
+            re.IGNORECASE
+        )
+        
+        if completely_answered_match:
+            explicit_answer = completely_answered_match.group(1).strip().lower()
+            if explicit_answer == "yes":
+                logger.info("Question explicitly marked as completely answered")
+                return True
+            elif explicit_answer == "no":
+                logger.info("Question explicitly marked as not completely answered")
+                return False
+        
+        # If no explicit answer, check the unanswered components
+        if not unanswered_components:
+            return True
+            
+        # Check if the only "unanswered component" is actually "None"
+        if len(unanswered_components) == 1 and unanswered_components[0].lower() == "none":
+            return True
+            
+        # Check if all components are variations of "None"
+        if all(comp.lower() == "none" for comp in unanswered_components):
+            return True
+        
+        # If we got here, there are genuine unanswered components
+        return False
+
+    def extract_unanswered_components(self, claim_analysis):
+        """Extract unanswered components from the claim analysis."""
         unanswered = []
 
         # Extract unanswered components using regex
@@ -295,53 +256,37 @@ Combined Answer:"""
         return unanswered
 
     def extract_follow_up_questions(self, claim_analysis):
-        """
-        Extract follow-up questions from the claim analysis.
-
-        Args:
-            claim_analysis: The claim analysis response from the model
-
-        Returns:
-            A list of follow-up questions
-        """
+        """Extract genuine follow-up questions only."""
         follow_ups = []
-
-        # Extract follow-up questions using regex
         follow_up_section = re.search(
             r"FOLLOW-UP QUESTIONS:(.*?)(?=$)", claim_analysis, re.DOTALL
         )
-
+        
         if follow_up_section:
             follow_up_text = follow_up_section.group(1).strip()
-            follow_up_lines = [
-                line.strip() for line in follow_up_text.split("\n") if line.strip()
-            ]
-
-            for line in follow_up_lines:
-                # Extract question text from lines like "- What is X?"
-                match = re.search(r"-\s*(.*)", line)
-                if match:
-                    question = match.group(1).strip()
-                    if question:
-                        follow_ups.append(question)
-
+            
+            # Only process if it's not "None"
+            if follow_up_text.strip() and follow_up_text.strip().lower() != "none":
+                for line in follow_up_text.split("\n"):
+                    if line.strip() and line.strip().lower() != "none":
+                        # Only match lines that start with a bullet or dash
+                        match = re.search(r"^-\s*(.*)", line.strip())
+                        if match:
+                            question = match.group(1).strip()
+                            # Additional validation - must be an actual question
+                            if question and ("?" in question or question.lower().startswith("how") or 
+                                            question.lower().startswith("what") or question.lower().startswith("why")):
+                                follow_ups.append(question)
+                                
         return follow_ups
 
     def extract_coverage_assessment(self, claim_analysis):
-        """
-        Extract coverage assessment for each component from the claim analysis.
-
-        Args:
-            claim_analysis: The claim analysis response from the model
-
-        Returns:
-            Dictionary mapping components to their coverage status
-        """
+        """Extract coverage assessment from the claim analysis."""
         coverage = {}
 
         # Extract coverage assessment using regex
         coverage_section = re.search(
-            r"COVERAGE ASSESSMENT:(.*?)(?=UNANSWERED COMPONENTS:|$)",
+            r"COVERAGE ASSESSMENT:(.*?)(?=CLAIMS TO REMOVE:|UNANSWERED COMPONENTS:|$)",
             claim_analysis,
             re.DOTALL,
         )
@@ -363,34 +308,171 @@ Combined Answer:"""
 
         return coverage
 
-    def remove_citations(self, text):
-        """
-        Remove citation brackets from the text.
+    def extract_claims_to_remove(self, claim_analysis):
+        """Extract claims to remove with better validation."""
+        to_remove = []
+        
+        section = re.search(r"CLAIMS TO REMOVE:(.*?)(?=UNANSWERED COMPONENTS:|$)", claim_analysis, re.DOTALL)
+        if section:
+            text = section.group(1).strip()
+            
+            # Skip if text says "None" or is empty
+            if text and text.lower() != "none":
+                # Extract claim numbers, not citation numbers
+                # Look for explicit claim numbers or bullet points
+                for line in text.split('\n'):
+                    if line.strip():
+                        claim_match = re.search(r"(?:^|\s)(?:Claim\s+)?(\d+)(?:\s|:|$)", line)
+                        if claim_match:
+                            to_remove.append(int(claim_match.group(1)))
+        
+        return to_remove
 
+    def process_follow_up_questions(self, query, filtered_answer, follow_up_questions, unanswered_components, completely_answered, filtered_documents):
+        """
+        Process valid follow-up questions in a unified way.
+        
         Args:
-            text: Text with citations
-
+            query: The original question
+            filtered_answer: The filtered answer with citations
+            follow_up_questions: List of extracted follow-up questions
+            unanswered_components: List of unanswered components
+            completely_answered: Boolean indicating if question is completely answered
+            filtered_documents: The filtered documents
+            
         Returns:
-            Text without citations
+            Tuple of (final_answer, follow_up_answers)
         """
+        # If the question is completely answered, no need for follow-ups
+        if completely_answered:
+            logger.info("Question is completely answered - skipping follow-up processing")
+            return self.remove_citations(filtered_answer), []
+        
+        # Initialize variables
+        current_answer = self.remove_citations(filtered_answer)
+        follow_up_answers = []
+        excluded_ids = {doc_id for _, doc_id in filtered_documents}
+        
+        # Filter and validate follow-up questions
+        valid_follow_ups = []
+        for q in follow_up_questions:
+            # Skip if None or empty
+            if not q or q.lower() == 'none':
+                continue
+                
+            # Check if it looks like a question (has question mark or starts with question words)
+            question_words = ['how', 'what', 'why', 'when', 'where', 'which', 'can', 'should', 'do']
+            if '?' in q or any(q.lower().startswith(w) for w in question_words):
+                valid_follow_ups.append(q)
+            else:
+                logger.info(f"Skipping invalid follow-up: '{q}'")
+        
+        # Only process if we have genuine unanswered parts and valid follow-ups
+        has_unanswered_parts = unanswered_components and not (
+            len(unanswered_components) == 1 and unanswered_components[0].lower() == "none"
+        )
+        
+        if has_unanswered_parts and valid_follow_ups:
+            logger.info(f"Processing {len(valid_follow_ups)} valid follow-up questions")
+            
+            for i, follow_up_q in enumerate(valid_follow_ups):
+                logger.info(f"Processing follow-up question {i+1}: {follow_up_q}")
+                
+                try:
+                    # Retrieve new documents for follow-up question
+                    new_docs = self.retriever.retrieve(
+                        follow_up_q, top_k=10, exclude_ids=excluded_ids
+                    )
+                    
+                    # Update excluded IDs
+                    for _, doc_id in new_docs:
+                        excluded_ids.add(doc_id)
+                    
+                    if new_docs:
+                        # Generate answer for follow-up question
+                        follow_up_prompt = self._create_follow_up_answer_prompt(
+                            query, follow_up_q, new_docs, current_answer
+                        )
+                        follow_up_answer_with_citations = self.agent.generate(follow_up_prompt)
+                        logger.info(f"Follow-up answer with citations: {follow_up_answer_with_citations}")
+                        
+                        # Skip integration if follow-up couldn't be answered
+                        if "cannot answer" in follow_up_answer_with_citations.lower() and "available information" in follow_up_answer_with_citations.lower():
+                            logger.info("Follow-up question couldn't be answered - skipping integration")
+                            follow_up_answers.append({
+                                "question": follow_up_q,
+                                "answer_with_citations": follow_up_answer_with_citations
+                            })
+                            continue
+                        
+                        # Integrate with previous answer
+                        integration_prompt = self._create_answer_integration_prompt(
+                            query, current_answer, follow_up_answer_with_citations
+                        )
+                        integrated_answer = self.agent.generate(integration_prompt)
+                        logger.info(f"Integrated answer: {integrated_answer}")
+                        
+                        # Update current answer for next iteration
+                        current_answer = integrated_answer
+                        follow_up_answers.append({
+                            "question": follow_up_q,
+                            "answer_with_citations": follow_up_answer_with_citations
+                        })
+                except Exception as e:
+                    logger.error(f"Error processing follow-up question: {e}")
+        
+        # Final answer is the last integrated answer
+        final_answer = current_answer
+        
+        return final_answer, follow_up_answers
+
+    def filter_claims(self, claims, claims_to_remove):
+        """Remove irrelevant claims from the list."""
+        if not claims_to_remove:
+            return claims
+            
+        return [claim for i, claim in enumerate(claims, 1) if i not in claims_to_remove]
+
+    def rebuild_answer_from_claims(self, filtered_claims):
+        """Rebuild the answer text from the filtered claims with citations."""
+        if not filtered_claims:
+            return "Based on the available information, I cannot provide a relevant answer to this question."
+            
+        answer_parts = []
+        for claim in filtered_claims:
+            citation_str = ",".join(map(str, claim["citations"]))
+            answer_parts.append(f"{claim['text']} [{citation_str}]")
+            
+        return " ".join(answer_parts)
+
+    def remove_citations(self, text):
+        """Remove citation brackets from the text."""
         return re.sub(r"\s*\[\d+(?:,\s*\d+)*\]", "", text)
 
     def process_answer(self, query, answer_with_citations, claims, filtered_documents):
         """
         Process an answer to check if it fully addresses the question and handle follow-up questions.
         
-        This method distinguishes between naturally multi-part questions and single questions,
-        and processes them accordingly.
-
         Args:
             query: The original question
             answer_with_citations: The answer with citations
             claims: List of extracted claims with their citations
             filtered_documents: The filtered documents used to generate the answer
-
+            
         Returns:
             Tuple of (final_answer, debug_info)
         """
+        # Handle empty claims case
+        if not claims and answer_with_citations.strip():
+            logger.info("No claims extracted - using fallback processing")
+            # Create a single claim from the entire answer
+            claims = [{
+                "text": re.sub(r"Document\s+\d+,?\s*", "", answer_with_citations).strip(),
+                "citations": list(range(1, len(filtered_documents) + 1))
+            }]
+
+        logger.info(f"Processing {len(claims)} claims...")
+
         # Step 1: Perform claim analysis
         logger.info("Agent 4 performing claim analysis...")
         claim_analysis_prompt = self._create_claim_analysis_prompt(
@@ -399,75 +481,59 @@ Combined Answer:"""
         claim_analysis = self.agent.generate(claim_analysis_prompt)
         logger.info(f"Claim analysis response: {claim_analysis}")
 
-        # Step 2: Extract question structure and components
+        # Step 2: Extract analysis results
         question_structure = self.extract_question_structure(claim_analysis)
         question_components = self.extract_question_components(claim_analysis)
         unanswered_components = self.extract_unanswered_components(claim_analysis)
         follow_up_questions = self.extract_follow_up_questions(claim_analysis)
         coverage_assessment = self.extract_coverage_assessment(claim_analysis)
+        claims_to_remove = self.extract_claims_to_remove(claim_analysis)
 
         logger.info(f"Question structure: {question_structure}")
         logger.info(f"Question components: {question_components}")
         logger.info(f"Unanswered components: {unanswered_components}")
         logger.info(f"Follow-up questions: {follow_up_questions}")
         logger.info(f"Coverage assessment: {coverage_assessment}")
+        logger.info(f"Claims to remove: {claims_to_remove}")
 
-        # Step 3: Determine if the question is completely answered
-        completely_answered = len(unanswered_components) == 0
+        # Step 3: Filter out irrelevant claims
+        filtered_claims = self.filter_claims(claims, claims_to_remove)
+        filtered_answer = self.rebuild_answer_from_claims(filtered_claims)
+        logger.info(f"Filtered answer: {filtered_answer}")
+
+        # Step 4: Determine if the question is completely answered
+        completely_answered = self.determine_if_completely_answered(claim_analysis, unanswered_components)
         logger.info(f"Question completely answered: {completely_answered}")
 
-        # Step 4: Process follow-up questions iteratively if needed
-        final_answer = self.remove_citations(answer_with_citations)
-        current_answer = final_answer
-        follow_up_answers = []
-        excluded_ids = {doc_id for _, doc_id in filtered_documents}
-
-        if not completely_answered and follow_up_questions:
-            for i, follow_up_q in enumerate(follow_up_questions):
-                logger.info(f"Processing follow-up question {i+1}: {follow_up_q}")
-
-                try:
-                    # Retrieve new documents for follow-up question
-                    new_docs = self.retriever.retrieve(
-                        follow_up_q, top_k=10, exclude_ids=excluded_ids
-                    )
-
-                    # Update excluded IDs to avoid duplicate documents
-                    for _, doc_id in new_docs:
-                        excluded_ids.add(doc_id)
-
-                    if new_docs:
-                        # Generate answer for follow-up question
-                        follow_up_prompt = self._create_follow_up_answer_prompt(
-                            query, follow_up_q, new_docs, current_answer
-                        )
-                        follow_up_answer_with_citations = self.agent.generate(
-                            follow_up_prompt
-                        )
-                        logger.info(f"Follow-up answer with citations: {follow_up_answer_with_citations}")
-
-                        # Integrate this answer with the previous answer
-                        integration_prompt = self._create_answer_integration_prompt(
-                            query, current_answer, follow_up_answer_with_citations
-                        )
-                        integrated_answer = self.agent.generate(integration_prompt)
-                        logger.info(f"Integrated answer: {integrated_answer}")
-
-                        # Update current answer for next iteration
-                        current_answer = integrated_answer
-                        follow_up_answers.append(
-                            {
-                                "question": follow_up_q,
-                                "answer_with_citations": follow_up_answer_with_citations,
-                            }
-                        )
-                except Exception as e:
-                    logger.error(f"Error processing follow-up question: {e}")
-
-        # Final answer is the last integrated answer
-        final_answer = current_answer
-
-        # Prepare debug info
+        # Step 5: If completely answered, return filtered answer
+        if completely_answered:
+            logger.info("Question is completely answered - returning filtered answer")
+            
+            # Prepare debug info with required keys
+            debug_info = {
+                "claim_analysis": claim_analysis,
+                "question_structure": question_structure,
+                "question_components": question_components,
+                "unanswered_components": unanswered_components,
+                "coverage_assessment": coverage_assessment,
+                "follow_up_questions": follow_up_questions,
+                "completely_answered": completely_answered,
+                "follow_up_answers": []
+            }
+            
+            return filtered_answer, debug_info
+        
+        # Step 6: Process follow-up questions if needed
+        final_answer, follow_up_answers_list = self.process_follow_up_questions(
+            query, 
+            filtered_answer, 
+            follow_up_questions, 
+            unanswered_components, 
+            completely_answered, 
+            filtered_documents
+        )
+        
+        # Prepare debug info with required keys
         debug_info = {
             "claim_analysis": claim_analysis,
             "question_structure": question_structure,
@@ -476,11 +542,16 @@ Combined Answer:"""
             "coverage_assessment": coverage_assessment,
             "follow_up_questions": follow_up_questions,
             "completely_answered": completely_answered,
-            "follow_up_answers": follow_up_answers,
+            "follow_up_answers": follow_up_answers_list
         }
+        
+        # Perform final sanity check
+        if "cannot provide" in final_answer.lower() and claims:
+            # We have claims but the answer says we can't answer - use original filtered answer
+            logger.info("Sanity check failed - reverting to filtered answer")
+            final_answer = self.remove_citations(filtered_answer)
 
         return final_answer, debug_info
-
 
 class MAIN_RAG:
     def __init__(
@@ -561,39 +632,45 @@ LLM Answer: {answer}
 Is this document relevant and supportive for answering the question?"""
 
     def _create_agent3_prompt(self, query, filtered_documents):
-        """
-        Create prompt for Agent-3 (Final-Predictor) optimized for 300-word evaluation.
-        Instructs the model to put the most important information first.
-        """
+        """Create prompt for Agent-3 with improved citation instructions."""
         # Format documents with index
-        docs_text = "\n\n".join(
-            [
-                f"Document {i+1}: {doc_text}"
-                for i, (doc_text, _) in enumerate(filtered_documents)
-            ]
-        )
+        docs_text = "\n\n".join([
+            f"Document {i+1}: {doc_text}"
+            for i, (doc_text, _) in enumerate(filtered_documents)
+        ])
 
-        return f"""You are an accurate and reliable AI assistant that can answer questions with the help of external documents. Your answer should be based ONLY on the provided documents. If the documents don't contain sufficient information to answer the question, state that clearly.
+        return f"""You are an accurate and reliable AI assistant. Answer questions based ONLY on the provided documents. If the documents don't contain sufficient information, state that clearly.
 
-IMPORTANT FORMATTING INSTRUCTIONS:
-1. PUT YOUR MOST IMPORTANT AND DIRECT ANSWERS IN THE FIRST 300 WORDS. Only the first 300 words will be evaluated.
-2. Begin with a concise, direct answer to the question that captures the essential information.
-3. Structure your answer with the most relevant information first, followed by supporting details.
-4. Be comprehensive but prioritize clarity and relevance in the opening paragraphs.
+IMPORTANT ANSWER GUIDELINES:
+1. Begin with a direct, concise answer to the question.
+2. PUT YOUR MOST IMPORTANT INFORMATION IN THE FIRST 300 WORDS - this part will be evaluated most heavily.
+3. Organize your answer in well-structured paragraphs.
+4. Every claim must directly contribute to answering the question.
+5. Be comprehensive but prioritize relevance over length.
 
-CITATION INSTRUCTIONS:
-1. For each claim or statement in your answer, add a citation in square brackets [X] immediately after the sentence.
-2. DO NOT refer to documents in the text like "Document 1 states..." or "According to Document 2...".
-3. Use ONLY the inline citation, the [X] format where X is the document number.
-4. If multiple documents support a claim, cite all of them like [1,3,5].
-5. Every factual claim must have a citation.
+CITATION INSTRUCTIONS - CRITICAL:
+1. EVERY claim MUST have a citation using ONLY this format: [X] where X is the document number.
+2. Place citations immediately after each sentence or claim like this: "Authentic Inuit sculptures don't always need signatures. [1,3]"
+3. NEVER use phrases like "Document 1 states" or "according to Document 2" or "(Document 3, Document 4)" or ""As Document 5 explains""
+4. ONLY cite specific relevant documents - don't cite all documents for every claim.
+5. If no documents contain information to answer the question, say so clearly.
+
+EXAMPLES OF CORRECT CITATIONS:
+✓ "Nematodes should be stored in the refrigerator until ready to use. [2]"
+✓ "The soil should be moist but not saturated before and after application. [3,5,7]"
+
+EXAMPLES OF INCORRECT CITATIONS:
+✗ "According to Document 2, nematodes should be stored in the refrigerator."
+✗ "Nematodes should be stored in the refrigerator (Document 2)."
+✗ "As Document 3 explains, the soil should be moist."
+✗ "The soil should be moist. [Document 3]"
 
 Documents:
 {docs_text}
 
 Question: {query}
 
-Answer (with citations):"""
+Answer (with citations using ONLY [X] format):"""
 
     def _create_agent4_prompt(self, query, answer_with_citations, filtered_documents):
         """
@@ -659,19 +736,55 @@ Answer the follow-up question ONLY based on the provided documents. Use the form
 Follow-up Answer (with citations):"""
 
     def _extract_claims_with_citations(self, answer_with_citations):
-        """Extract individual claims and their citations from the answer."""
-        # Simple regex-based extraction
-        claim_pattern = r"(.*?)\s*\[(\d+(?:,\s*\d+)*)\]"
+        """Extract individual claims and their citations from the answer with improved robustness."""
+        # Original pattern looking for [X] citations
+        bracket_pattern = r"(.*?)\s*\[(\d+(?:,\s*\d+)*)\]"
+        
+        # Additional pattern for "Document X" style references
+        doc_pattern = r"(.*?)(?:Document\s+(\d+(?:,\s*\d+)*))"
+        
         claims = []
-
-        for match in re.finditer(claim_pattern, answer_with_citations):
+        
+        # First try to extract standard [X] citations
+        bracket_matches = list(re.finditer(bracket_pattern, answer_with_citations))
+        
+        # If no standard citations found, check for "Document X" style
+        if not bracket_matches:
+            # Convert "Document X" to [X] format for easier processing
+            normalized_answer = re.sub(
+                r"Document\s+(\d+)", 
+                lambda m: f"[{m.group(1)}]", 
+                answer_with_citations
+            )
+            
+            # Try extraction again with normalized format
+            bracket_matches = list(re.finditer(bracket_pattern, normalized_answer))
+        
+        # Process matches
+        for match in bracket_matches:
             claim_text = match.group(1).strip()
             citation_str = match.group(2)
             citations = [int(c.strip()) for c in citation_str.split(",")]
-
+            
             if claim_text:
                 claims.append({"text": claim_text, "citations": citations})
-
+        
+        # Fallback: If still no claims extracted, treat entire answer as one claim
+        if not claims and answer_with_citations.strip():
+            # Extract all document numbers mentioned
+            doc_nums = re.findall(r"Document\s+(\d+)", answer_with_citations)
+            if doc_nums:
+                citations = [int(num) for num in doc_nums]
+                
+                # Remove explicit document references for the claim text
+                clean_text = re.sub(r"Document\s+\d+,?\s*", "", answer_with_citations)
+                clean_text = re.sub(r"such as Document \d+(, Document \d+)*", "", clean_text)
+                
+                claims.append({
+                    "text": clean_text.strip(),
+                    "citations": sorted(set(citations))
+                })
+        
         return claims
 
     def _combine_answers(self, original_answer, follow_up_answers):
@@ -829,9 +942,22 @@ Follow-up Answer (with citations):"""
 
         # Log each claim with its citations
         for i, claim in enumerate(claims):
-            logger.info(
-                f"Claim {i+1}: {claim['text']} - cited docs: {claim['citations']}"
+            logger.info(f"Claim {i+1}: {claim['text']} - cited docs: {claim['citations']}")
+
+        # Special handling for when no claims are extracted
+        if not claims:
+            logger.warn("No claims extracted, attempting to normalize citations")
+            # Try to normalize citation format
+            normalized_answer = re.sub(
+                r"Document\s+(\d+)", 
+                lambda m: f"[{m.group(1)}]", 
+                answer_with_citations
             )
+            claims = self._extract_claims_with_citations(normalized_answer)
+            if claims:
+                logger.info(f"After normalization: Extracted {len(claims)} claims")
+                # Update answer_with_citations with normalized format
+                answer_with_citations = normalized_answer
 
         # Step 7: Enhanced Agent-4 processes the answer
         logger.info("Enhanced Agent-4 processing answer...")
@@ -840,9 +966,11 @@ Follow-up Answer (with citations):"""
         enhanced_agent4 = EnhancedAgent4(self.agent4, self.retriever)
 
         # Process the answer using the enhanced Agent 4
-        final_answer, judge_debug_info = enhanced_agent4.process_answer(
+        final_answer_with_citations, judge_debug_info = enhanced_agent4.process_answer(
             query, answer_with_citations, claims, filtered_docs_no_score
         )
+
+        final_answer_for_user = self._remove_citations(final_answer_with_citations)
 
         # Format supporting passages in order of importance
         supporting_passages = self.format_supporting_passages(
@@ -851,7 +979,7 @@ Follow-up Answer (with citations):"""
 
         # Log the final answer
         logger.info(f"Answer with citations: {answer_with_citations}")
-        logger.info(f"Final answer (after follow-up processing): {final_answer}")
+        logger.info(f"Final answer (after follow-up processing): {final_answer_for_user}")
         logger.info(f"Supporting passages: {supporting_passages}")
 
         # Return the answer and debug information
@@ -879,4 +1007,4 @@ Follow-up Answer (with citations):"""
             "follow_up_answers": judge_debug_info["follow_up_answers"],
         }
 
-        return final_answer, debug_info
+        return final_answer_for_user, debug_info
