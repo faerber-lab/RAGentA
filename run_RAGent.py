@@ -10,12 +10,12 @@ import logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("main_rag_runner.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("ragent_runner.log"), logging.StreamHandler()],
 )
-logger = logging.getLogger("MAIN_RAG_Runner")
+logger = logging.getLogger("RAGENT_Runner")
 
 # Import our components
-from main_rag import MAIN_RAG
+from RAGent import RAGENT
 from hybrid_retriever import HybridRetriever
 
 
@@ -175,7 +175,7 @@ def write_result_to_json(result, output_file):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Enhanced MAIN-RAG with Hybrid Retrieval"
+        description="Enhanced RAGent with Hybrid Retrieval"
     )
     parser.add_argument(
         "--model",
@@ -219,9 +219,9 @@ def main():
     logger.info(f"Initializing hybrid retriever with alpha={args.alpha}...")
     retriever = HybridRetriever(alpha=args.alpha, top_k=args.top_k)
 
-    # Initialize MAIN-RAG
-    logger.info(f"Initializing enhanced MAIN-RAG with n={args.n}...")
-    main_rag = MAIN_RAG(retriever, agent_model=args.model, n=args.n)
+    # Initialize RAGent
+    logger.info(f"Initializing enhanced RAGent with n={args.n}...")
+    ragent = RAGENT(retriever, agent_model=args.model, n=args.n)
 
     # Create output directories
     os.makedirs(args.output_dir, exist_ok=True)
@@ -236,7 +236,7 @@ def main():
 
         try:
             # Process the query
-            answer, debug_info = main_rag.answer_query(args.single_question)
+            answer, debug_info = ragent.answer_query(args.single_question)
 
             # Calculate processing time
             process_time = time.time() - start_time
@@ -297,7 +297,7 @@ def main():
 
         try:
             # Process the query
-            answer, debug_info = main_rag.answer_query(item["question"])
+            answer, debug_info = ragent.answer_query(item["question"])
 
             # Calculate processing time
             process_time = time.time() - start_time
