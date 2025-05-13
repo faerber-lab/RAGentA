@@ -1,4 +1,4 @@
-# RAGent - Enhanced Retrieval-Augmented Generation Framework
+# RAGent - Retrieval-Augmented Generation Agent Framwork
 RAGent is an advanced framework for Retrieval-Augmented Generation that improves answer generation through a multi-agent architecture with citation tracking, claim analysis, and follow-up question processing. 
 
 ## Features
@@ -134,7 +134,7 @@ If you use RAGent in your research, please cite:
 ```
 @software{RAGent2025,
   author = {Schreieder, Tobias and Besrour, Ines and He, Jingbo},
-  title = {RAGent: Enhanced Retrieval-Augmented Generation Framework},
+  title = {RAGent: Retrieval-Augmented Generation Agent Framwork},
   year = {2025},
   publisher = {GitHub},
   url = {git@github.com:tobiasschreieder/LiveRAG.git}
