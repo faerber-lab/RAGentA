@@ -130,7 +130,7 @@ recall_score = evaluate_corpus_rag_recall(retrieved_docs_list, golden_docs_list,
 This project is licensed under the BSD 2-Clause License - see the LICENSE file for details.
 
 ## Acknowledgments and Inspiration
-RAGent draws inspiration from the MAIN-RAG framework (Multi-Agent Filtering Retrieval-Augmented Generation) introduced by Chang et al. in their paper "MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation". While RAGent follows a similar multi-agent architecture approach for the first three agents, our implementation is independently developed and significantly extends the original concept through:
+RAGent draws inspiration from the MAIN-RAG framework (Multi-Agent Filtering Retrieval-Augmented Generation) introduced by Chang et al. in their paper [MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation](https://arxiv.org/abs/2501.00332). While RAGent follows a similar multi-agent architecture approach for the first three agents, our implementation is independently developed and significantly extends the original concept through:
 1. **Hybrid Retrieval System**: RAGent implements an advanced hybrid retrieval approach that combines semantic (dense) and keyword (sparse) search with configurable weighting (α parameter) to improve document relevance
 2. **Enhanced Agent-3**: Our implementation includes explicit citation tracking capabilities to improve answer transparency and traceability
 3. **Additional Agent-4 (Claim Judge)**: RAGent introduces a fourth agent that performs claim-by-claim analysis to identify gaps in knowledge and generate targeted follow-up questions
