@@ -184,7 +184,7 @@ The system uses a statistical approach to determine document relevance:
 4. Only documents with scores ≥ adjusted_tau_q are used
 5. This adaptive threshold adjusts based on query difficulty and document quality
 ### Agent Implementations
-RAGent supports two types of agent implementations, but Local LLM Agent is recommended:
+RAGent supports two types of agent implementations, but Local LLM Agent is strongly recommended:
 1. **Local LLM Agent** (`LLMAgent` class):
 - Runs models directly on local hardware (GPU/CPU)
 - Supports various model precision formats (bfloat16, float16, float32)
