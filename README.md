@@ -154,10 +154,10 @@ RAGent uses a hybrid approach combining dense and sparse retrieval methods:
 - Uses Pinecone vector database
 - Embedding model: intfloat/e5-base-v2
 - Provides context-aware document retrieval
-### 2. Keyword Search (Sparse Retrieval):
+#### 2. Keyword Search (Sparse Retrieval):
 - Uses OpenSearch for traditional keyword matching
 - Handles cases where semantic search may miss important keywords
-### 3. Hybrid Scoring:
+#### 3. Hybrid Scoring:
 - Combines scores with weighting parameter `alpha`
 - Formula: `final_score = alpha * semantic_score + (1 - alpha) * keyword_score`
 - Higher alpha (default 0.7) puts more emphasis on semantic search
