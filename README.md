@@ -1,5 +1,5 @@
 # RAGent - Retrieval-Augmented Generation Agent Framwork
-RAGent is an advanced framework for Retrieval-Augmented Generation that improves answer generation through a multi-agent architecture with citation tracking, claim analysis, and follow-up question processing. 
+RAGent is an advanced framework for Retrieval-Augmented Generation that improves answer generation through a multi-agent architecture with citation tracking, claim analysis, and follow-up question processing.
 
 ## Features
 - **Multi-Agent Architecture**: Uses multiple specialized agents for document retrieval, relevance judgment, answer generation, and claim analysis
@@ -129,9 +129,22 @@ recall_score = evaluate_corpus_rag_recall(retrieved_docs_list, golden_docs_list,
 ## License
 This project is licensed under the BSD 2-Clause License - see the LICENSE file for details.
 
-## Citation
-If you use RAGent in your research, please cite:
+## Acknowledgments and Inspiration
+RAGent draws inspiration from the MAIN-RAG framework (Multi-Agent Filtering Retrieval-Augmented Generation) introduced by Chang et al. in their paper "MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation". While RAGent follows a similar multi-agent architecture approach for the first three agents, our implementation is independently developed and significantly extends the original concept through:
+1. **Hybrid Retrieval System**: RAGent implements an advanced hybrid retrieval approach that combines semantic (dense) and keyword (sparse) search with configurable weighting (α parameter) to improve document relevance
+2. **Enhanced Agent-3**: Our implementation includes explicit citation tracking capabilities to improve answer transparency and traceability
+3. **Additional Agent-4 (Claim Judge)**: RAGent introduces a fourth agent that performs claim-by-claim analysis to identify gaps in knowledge and generate targeted follow-up questions
+4. **Follow-up Processing**: RAGent can retrieve additional information for unanswered aspects of questions through a novel follow-up question generation system
+
+Please cite both the original MAIN-RAG paper and RAGent in any work that uses this code:
 ```
+@article{chang2025mainrag,
+  title={MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation},
+  author={Chang, Chia-Yuan and Jiang, Zhimeng and Rakesh, Vineeth and Pan, Menghai and Yeh, Chin-Chia Michael and Wang, Guanchu and Hu, Mingzhi and Xu, Zhichao and Zheng, Yan and Das, Mahashweta and Zou, Na},
+  journal={arXiv preprint arXiv:2501.00332},
+  year={2025}
+}
+
 @software{RAGent2025,
   author = {Schreieder, Tobias and Besrour, Ines and He, Jingbo},
   title = {RAGent: Retrieval-Augmented Generation Agent Framwork},
