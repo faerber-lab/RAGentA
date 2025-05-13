@@ -160,7 +160,7 @@ RAGent uses a hybrid approach combining dense and sparse retrieval methods:
 #### 3. Hybrid Scoring:
 - Combines scores with weighting parameter `alpha`
 - Formula: `final_score = alpha * semantic_score + (1 - alpha) * keyword_score`
-- Higher alpha (default 0.7) puts more emphasis on semantic search
+- Higher alpha (default 0.65) puts more emphasis on semantic search
 ### Question Analysis & Follow-up System
 One of RAGent's key innovations is how it analyzes questions and identifies when they're not fully answered:
 1. **Question Structure Analysis**:
