@@ -109,12 +109,117 @@ Results are saved in the specified output format with the following structure:
 }
 ```
 
-## Architecture Details
-RAGent uses a four-agent architecture:
+## System Architecture
+RAGent uses a sophisticated multi-agent architecture to improve the quality of retrieval-augmented generation. Here's a detailed breakdown of how the system works:
 - **Agent 1 (Predictor)**: Generates candidate answers for each retrieved document
 - **Agent 2 (Judge)**: Evaluates document relevance for the query
 - **Agent 3 (Final-Predictor)**: Generates the final answer with citations
 - **Agent 4 (Claim Judge)**: Analyzes claims in the answer and identifies knowledge gaps
+### Multi-Agent Architecture
+The core of RAGent is its 4-agent architecture that handles different aspects of the retrieval and generation process:
+#### Agent 1: Predictor
+- **Purpose**: Generates candidate answers for each retrieved document
+- **Input**: Query + single document
+- **Output**: Document-specific answer
+- **Process**: For each retrieved document, Agent 1 creates a potential answer based solely on that document
+- **Implementation**: Uses prompt template `_create_agent1_prompt()` in `RAGent.py`
+#### Agent 2: Judge
+- **Purpose**: Evaluates document relevance and filters out noise
+- **Input**: Query + document + candidate answer
+- **Output**: Relevance score (log probability)
+- **Process**: Calculates score as `log_probs["Yes"] - log_probs["No"]` for each document
+- **Key Innovation**: Creates an adaptive threshold (τq) based on score distribution
+- **Implementation**: Uses `get_log_probs()` method rather than regular generation
+#### Agent 3: Final-Predictor
+- **Purpose**: Generates comprehensive answer with citations
+- **Input**: Query + filtered documents
+- **Output**: Answer with proper [X] citations
+- **Process**: Synthesizes information across filtered documents with strict citation requirements
+- **Implementation**: Uses detailed prompt with citation guidelines in `_create_agent3_prompt()`
+#### Agent 4: Claim Judge (EnhancedAgent4)
+- **Purpose**: Analyzes answer quality and detects knowledge gaps
+- **Input**: Query + answer with citations + claims + documents
+- **Output**: Improved answer + follow-up questions if needed
+- **Process**:
+  1. Breaks answer into individual claims with citations
+  2. Analyzes if the question has multiple components
+  3. Determines which claims address which components
+  4. Identifies any unanswered aspects
+  5. Generates follow-up questions for missing information
+  6. Retrieves new documents and integrates additional knowledge
+- **Implementation**: Most complex agent, implemented as separate `EnhancedAgent4` class
+### Hybrid Retrieval System
+RAGent uses a hybrid approach combining dense and sparse retrieval methods:
+#### 1. Semantic Search (Dense Retrieval):
+- Uses Pinecone vector database
+- Embedding model: intfloat/e5-base-v2
+- Provides context-aware document retrieval
+### 2. Keyword Search (Sparse Retrieval):
+- Uses OpenSearch for traditional keyword matching
+- Handles cases where semantic search may miss important keywords
+### 3. Hybrid Scoring:
+- Combines scores with weighting parameter `alpha`
+- Formula: `final_score = alpha * semantic_score + (1 - alpha) * keyword_score`
+- Higher alpha (default 0.7) puts more emphasis on semantic search
+### Question Analysis & Follow-up System
+One of RAGent's key innovations is how it analyzes questions and identifies when they're not fully answered:
+1. **Question Structure Analysis**:
+- Determines if question contains multiple distinct components
+- Avoids artificially breaking a single question into parts
+2. **Claim Mapping**:
+- Maps each claim in the answer to specific question components
+- Tracks which claims address which parts of the question
+3. **Coverage Assessment**:
+- Evaluates if each component is fully answered, partially answered, or not answered
+- Uses regex patterns to extract coverage assessments from LLM output
+4. **Follow-up Processing**:
+- For unanswered components, generates standalone follow-up questions
+- Retrieves new documents specifically for these follow-up questions
+- Integrates new information into original answer
+### Adaptive Judge Bar Mechanism
+The system uses a statistical approach to determine document relevance:
+1. Calculate mean score (τq) across all documents
+2. Calculate standard deviation (σ) of scores
+3. Set threshold as: `adjusted_tau_q = τq - n * σ` where n is a hyperparameter
+4. Only documents with scores ≥ adjusted_tau_q are used
+5. This adaptive threshold adjusts based on query difficulty and document quality
+### Agent Implementations
+RAGent supports two types of agent implementations, but Local LLM Agent is recommended:
+1. **Local LLM Agent** (`LLMAgent` class):
+- Runs models directly on local hardware (GPU/CPU)
+- Supports various model precision formats (bfloat16, float16, float32)
+- Optimized for different hardware configurations
+- Uses Hugging Face transformers with device_map="auto"
+2. **API-based Agent** (`FalconAgent` class):
+- Connects to external API (AI71) for inference
+- Uses exponential backoff for request retries
+- Approximates log probabilities for Yes/No judgments
+- Ideal when local hardware is insufficient for model size
+### Information Flow
+Here's how information flows through the system:
+#### 1. Retrieval Phase:
+- Query is sent to hybrid retriever
+- Top-k documents retrieved (default 20)
+- Documents combined from semantic and keyword search
+#### 2. Initial Judgment Phase:
+- Agent 1 generates answers for each document
+- Agent 2 scores each document
+- Adaptive threshold calculated
+- Low-scoring documents filtered out
+#### 3. Answer Generation Phase:
+- Agent 3 generates comprehensive answer with citations
+- Citations use [X] format where X is document number
+- Claims extracted with citation mapping
+#### 4. Analysis Phase:
+- Agent 4 analyzes if question is completely answered
+- Identifies any unanswered components
+- Generates follow-up questions if needed
+#### 5. Follow-up Phase (if needed):
+- Retrieves new documents for follow-up questions
+- Generates answers to follow-up questions
+- Integrates new information with original answer
+
+This multi-stage approach with specialized agents allows RAGent to produce more accurate, comprehensive, and properly cited answers compared to simpler RAG approaches.
 
 ## Evaluation
 To evaluate RAG performance, use the metrics in `RAG_evaluation.py`:
