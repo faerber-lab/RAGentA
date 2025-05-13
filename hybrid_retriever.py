@@ -17,7 +17,7 @@ OPENSEARCH_INDEX_NAME = "fineweb10bt-512-0w-e5-base-v2"
 
 
 class HybridRetriever:
-    def __init__(self, alpha=0.7, top_k=20):
+    def __init__(self, alpha=0.65, top_k=20):
         """
         Initialize a hybrid retriever that combines dense and sparse retrieval.
 
