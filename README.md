@@ -150,6 +150,6 @@ Please cite both the original MAIN-RAG paper and RAGent in any work that uses th
   title = {RAGent: Retrieval-Augmented Generation Agent Framwork},
   year = {2025},
   publisher = {GitHub},
-  url = {git@github.com:tobiasschreieder/LiveRAG.git}
+  url = {[git@github.com:tobiasschreieder/LiveRAG.git](https://github.com/tobiasschreieder/LiveRAG.git)}
 }
 ```
