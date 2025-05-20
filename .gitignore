@@ -57,6 +57,9 @@ data/documents/*
 data/benchmarks/*
 !data/documents/.gitkeep
 !data/benchmarks/.gitkeep
+evaluation/*
+evaluation_results/*
+evaluation_retrieval/*
 
 # Model files
 *.ckpt

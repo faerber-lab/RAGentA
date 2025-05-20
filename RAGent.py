@@ -4,15 +4,27 @@ import re
 import copy
 import logging
 from typing import List, Dict, Tuple, Any
+import os
+import datetime
+import random
+import string
+
+# Generate a unique ID for log filename
+def get_unique_log_filename():
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return f"logs/ragent_{timestamp}_{random_str}.log"
+
+# Create logs directory
+os.makedirs("logs", exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("ragent.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler(get_unique_log_filename()), logging.StreamHandler()],
 )
 logger = logging.getLogger("RAGENT")
-
 
 class EnhancedAgent4:
     """
@@ -426,7 +438,7 @@ Combined Answer (with citations):"""
                 try:
                     # Retrieve new documents for follow-up question
                     new_docs = self.retriever.retrieve(
-                        follow_up_q, top_k=10, exclude_ids=excluded_ids
+                        follow_up_q, top_k=20, exclude_ids=excluded_ids
                     )
 
                     # Update excluded IDs

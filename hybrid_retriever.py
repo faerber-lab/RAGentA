@@ -218,8 +218,8 @@ class HybridRetriever:
         # Calculate hybrid scores
         for res in combined.values():
             res["final_score"] = (
-                self.alpha * res["semantic_score"]
-                + (1 - self.alpha) * res["keyword_score"]
+                self.alpha * res["semantic_score"] # E5
+                + (1 - self.alpha) * res["keyword_score"] # BM25
             )
 
         # Sort and limit
