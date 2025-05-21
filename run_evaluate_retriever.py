@@ -199,21 +199,43 @@ def run_evaluation(retriever, questions, golden_docs, ks=[5, 10, 20, 50, 100]):
     for k in ks:
         logger.info(f"Calculating metrics for k={k}")
         
+        # Calculate standard metrics
         mrr = evaluate_corpus_rag_mrr(all_retrieved_ids, all_golden_ids, k=k)
         recall = evaluate_corpus_rag_recall(all_retrieved_ids, all_golden_ids, k=k)
         precision = evaluate_corpus_rag_precision(all_retrieved_ids, all_golden_ids, k=k)
         f1 = evaluate_corpus_rag_f1(all_retrieved_ids, all_golden_ids, k=k)
         
+        # Calculate additional metrics for this k value
+        queries_with_matches_k = 0
+        total_matches_k = 0
+        
+        for retrieved_ids, golden_ids in zip(all_retrieved_ids, all_golden_ids):
+            # Consider only the top-k retrieved documents
+            intersection_k = set(retrieved_ids[:k]).intersection(set(golden_ids))
+            if len(intersection_k) > 0:
+                queries_with_matches_k += 1
+            total_matches_k += len(intersection_k)
+        
+        # Calculate per-k additional metrics
+        total_queries = len(all_retrieved_ids)
+        queries_with_matches_ratio = queries_with_matches_k / total_queries if total_queries > 0 else 0
+        average_matches_k = total_matches_k / total_queries if total_queries > 0 else 0
+        
+        # Store all metrics together for this k
         results[k] = {
             "MRR": mrr,
             "Recall": recall,
             "Precision": precision,
-            "F1": f1
+            "F1": f1,
+            "queries_with_matches": queries_with_matches_k,
+            "queries_with_matches_ratio": queries_with_matches_ratio,
+            "average_matches": average_matches_k
         }
         
         logger.info(f"k={k}: MRR={mrr:.4f}, Recall={recall:.4f}, Precision={precision:.4f}, F1={f1:.4f}")
+        logger.info(f"k={k}: queries_with_matches={queries_with_matches_k}/{total_queries} ({queries_with_matches_ratio:.4f}), average_matches={average_matches_k:.4f}")
     
-    # Add comparison summary to results
+    # Add overall comparison summary to results (using max k)
     results["comparison_summary"] = {
         "total_queries": len(comparison_data),
         "queries_with_matches": sum(1 for item in comparison_data if item["intersection_count"] > 0),
