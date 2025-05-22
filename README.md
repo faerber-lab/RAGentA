@@ -252,7 +252,7 @@ Please cite both the original MAIN-RAG paper and RAGentA in any work that uses t
 
 @software{RAGentA2025,
   author = {Schreieder, Tobias and Besrour, Ines and He, Jingbo},
-  title = {RAGentA: Retrieval-Augmented Generation Agent Framwork},
+  title = {RAGentA: Multi-Agent Retrieval-Augmented Generation for Attributed Question Answering},
   year = {2025},
   publisher = {GitHub},
   url = {[git@github.com:tobiasschreieder/LiveRAG.git](https://github.com/tobiasschreieder/LiveRAG.git)}
