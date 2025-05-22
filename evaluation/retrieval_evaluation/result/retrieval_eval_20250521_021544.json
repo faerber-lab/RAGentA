@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "alpha": 1.0,
+    "num_questions": 500,
+    "evaluation_time": 316.3181917667389
+  },
+  "metrics": {
+    "5": {
+      "MRR": 0.3246333333333333,
+      "Recall": 0.311,
+      "Precision": 0.10560000000000022,
+      "F1": 0.1553333333333334,
+      "queries_with_matches": 228,
+      "queries_with_matches_ratio": 0.456,
+      "average_matches": 0.528
+    },
+    "10": {
+      "MRR": 0.3408325396825395,
+      "Recall": 0.401,
+      "Precision": 0.06880000000000026,
+      "F1": 0.11639393939393915,
+      "queries_with_matches": 288,
+      "queries_with_matches_ratio": 0.576,
+      "average_matches": 0.688
+    },
+    "20": {
+      "MRR": 0.3474860053259433,
+      "Recall": 0.492,
+      "Precision": 0.04260000000000022,
+      "F1": 0.07802597402597407,
+      "queries_with_matches": 337,
+      "queries_with_matches_ratio": 0.674,
+      "average_matches": 0.852
+    },
+    "30": {
+      "MRR": 0.3494228981654598,
+      "Recall": 0.536,
+      "Precision": 0.03119999999999992,
+      "F1": 0.058774193548387206,
+      "queries_with_matches": 361,
+      "queries_with_matches_ratio": 0.722,
+      "average_matches": 0.936
+    },
+    "comparison_summary": {
+      "total_queries": 500,
+      "queries_with_matches": 361,
+      "average_golden_ids": 1.782,
+      "average_matches": 0.936
+    }
+  }
+}

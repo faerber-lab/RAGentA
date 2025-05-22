@@ -1,0 +1,33 @@
+{
+  "total_questions": 497,
+  "faithfulness": {
+    "mean": 0.7044265593561368,
+    "std": 0.38133056676026805,
+    "min": -1.0,
+    "max": 1.0,
+    "median": 0.8
+  },
+  "correctness": {
+    "mean": 0.8346076458752515,
+    "std": 0.8131028931636624,
+    "min": -1.0,
+    "max": 2.0,
+    "median": 1.0
+  },
+  "combined": {
+    "mean": 0.7695171026156943,
+    "std": 0.5161880167351635,
+    "min": -1.0,
+    "max": 1.5,
+    "median": 0.9
+  },
+  "score_distributions": {
+    "faithfulness_negative": 8,
+    "faithfulness_zero": 55,
+    "faithfulness_positive": 434,
+    "correctness_negative": 67,
+    "correctness_zero": 13,
+    "correctness_positive": 417,
+    "forced_correctness_adjustments": 8
+  }
+}
