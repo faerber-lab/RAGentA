@@ -1,5 +1,5 @@
-# RAGent - Retrieval-Augmented Generation Agent Framwork
-RAGent is an advanced framework for Retrieval-Augmented Generation that improves answer generation through a multi-agent architecture with citation tracking, claim analysis, and follow-up question processing.
+# RAGentA: Multi-Agent Retrieval-Augmented Generation for Attributed Question Answering
+RAGentA, a multi-agent retrieval-augmented generation (RAG) framework for attributed question answering. With the goal of trustworthy answer generation, RAGentA focuses on optimizing answer correctness, defined by coverage and relevance to the question and faithfulness, which measures the extent to which answers are grounded in retrieved documents
 
 ## Features
 - **Multi-Agent Architecture**: Uses multiple specialized agents for document retrieval, relevance judgment, answer generation, and claim analysis
