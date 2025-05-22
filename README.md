@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 ## Configuration
 ### AWS Configuration
-RAGent uses AWS services for document retrieval. You'll need to set up AWS credentials:
+RAGentA uses AWS services for document retrieval. You'll need to set up AWS credentials:
 1. Create AWS credentials file:
 ```bash
 mkdir -p ~/.aws
@@ -61,15 +61,15 @@ export AWS_REGION=us-east-1
 export HUGGING_FACE_HUB_TOKEN=your_hf_token  # If needed for accessing models
 ```
 
-## Running RAGent
-RAGent can be run on a single question or a batch of questions from a JSON/JSONL file.
+## Running RAGentA
+RAGentA can be run on a single question or a batch of questions from a JSON/JSONL file.
 ### Process a Single Question
 ```bash
-python run_RAGent.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --single_question "Your question here?"
+python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --single_question "Your question here?"
 ```
 ### Process Questions from a Dataset
 ```bash
-python run_RAGent.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --data_file your_questions.jsonl --output_format jsonl
+python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --data_file your_questions.jsonl --output_format jsonl
 ```
 ### Parameters
 - `--model`: Model name or path (default: "tiiuae/falcon-3-10b-instruct")
@@ -110,19 +110,19 @@ Results are saved in the specified output format with the following structure:
 ```
 
 ## System Architecture
-RAGent uses a sophisticated multi-agent architecture to improve the quality of retrieval-augmented generation. Here's a detailed breakdown of how the system works:
+RAGentA uses a sophisticated multi-agent architecture to improve the quality of retrieval-augmented generation. Here's a detailed breakdown of how the system works:
 - **Agent 1 (Predictor)**: Generates candidate answers for each retrieved document
 - **Agent 2 (Judge)**: Evaluates document relevance for the query
 - **Agent 3 (Final-Predictor)**: Generates the final answer with citations
 - **Agent 4 (Claim Judge)**: Analyzes claims in the answer and identifies knowledge gaps
 ### Multi-Agent Architecture
-The core of RAGent is its 4-agent architecture that handles different aspects of the retrieval and generation process:
+The core of RAGentA is its 4-agent architecture that handles different aspects of the retrieval and generation process:
 #### Agent 1: Predictor
 - **Purpose**: Generates candidate answers for each retrieved document
 - **Input**: Query + single document
 - **Output**: Document-specific answer
 - **Process**: For each retrieved document, Agent 1 creates a potential answer based solely on that document
-- **Implementation**: Uses prompt template `_create_agent1_prompt()` in `RAGent.py`
+- **Implementation**: Uses prompt template `_create_agent1_prompt()` in `RAGentA.py`
 #### Agent 2: Judge
 - **Purpose**: Evaluates document relevance and filters out noise
 - **Input**: Query + document + candidate answer
@@ -149,7 +149,7 @@ The core of RAGent is its 4-agent architecture that handles different aspects of
   6. Retrieves new documents and integrates additional knowledge
 - **Implementation**: Most complex agent, implemented as separate `EnhancedAgent4` class
 ### Hybrid Retrieval System
-RAGent uses a hybrid approach combining dense and sparse retrieval methods:
+RAGentA uses a hybrid approach combining dense and sparse retrieval methods:
 #### 1. Semantic Search (Dense Retrieval):
 - Uses Pinecone vector database
 - Embedding model: intfloat/e5-base-v2
@@ -162,7 +162,7 @@ RAGent uses a hybrid approach combining dense and sparse retrieval methods:
 - Formula: `final_score = alpha * semantic_score + (1 - alpha) * keyword_score`
 - Higher alpha (default 0.65) puts more emphasis on semantic search
 ### Question Analysis & Follow-up System
-One of RAGent's key innovations is how it analyzes questions and identifies when they're not fully answered:
+One of RAGentA's key innovations is how it analyzes questions and identifies when they're not fully answered:
 1. **Question Structure Analysis**:
 - Determines if question contains multiple distinct components
 - Avoids artificially breaking a single question into parts
@@ -184,7 +184,7 @@ The system uses a statistical approach to determine document relevance:
 4. Only documents with scores ≥ adjusted_tau_q are used
 5. This adaptive threshold adjusts based on query difficulty and document quality
 ### Agent Implementations
-RAGent supports two types of agent implementations, but Local LLM Agent is strongly recommended:
+RAGentA supports two types of agent implementations, but Local LLM Agent is strongly recommended:
 1. **Local LLM Agent** (`LLMAgent` class):
 - Runs models directly on local hardware (GPU/CPU)
 - Supports various model precision formats (bfloat16, float16, float32)
@@ -219,7 +219,7 @@ Here's how information flows through the system:
 - Generates answers to follow-up questions
 - Integrates new information with original answer
 
-This multi-stage approach with specialized agents allows RAGent to produce more accurate, comprehensive, and properly cited answers compared to simpler RAG approaches.
+This multi-stage approach with specialized agents allows RAGentA to produce more accurate, comprehensive, and properly cited answers compared to simpler RAG approaches.
 
 ## Evaluation
 To evaluate RAG performance, use the metrics in `RAG_evaluation.py`:
@@ -235,13 +235,13 @@ recall_score = evaluate_corpus_rag_recall(retrieved_docs_list, golden_docs_list,
 This project is licensed under the BSD 2-Clause License - see the LICENSE file for details.
 
 ## Acknowledgments and Inspiration
-RAGent draws inspiration from the MAIN-RAG framework (Multi-Agent Filtering Retrieval-Augmented Generation) introduced by Chang et al. in their paper [MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation](https://arxiv.org/abs/2501.00332). While RAGent follows a similar multi-agent architecture approach for the first three agents, our implementation is independently developed and significantly extends the original concept through:
-1. **Hybrid Retrieval System**: RAGent implements an advanced hybrid retrieval approach that combines semantic (dense) and keyword (sparse) search with configurable weighting (α parameter) to improve document relevance
+RAGentA draws inspiration from the MAIN-RAG framework (Multi-Agent Filtering Retrieval-Augmented Generation) introduced by Chang et al. in their paper [MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation](https://arxiv.org/abs/2501.00332). While RAGentA follows a similar multi-agent architecture approach for the first three agents, our implementation is independently developed and significantly extends the original concept through:
+1. **Hybrid Retrieval System**: RAGentA implements an advanced hybrid retrieval approach that combines semantic (dense) and keyword (sparse) search with configurable weighting (α parameter) to improve document relevance
 2. **Enhanced Agent-3**: Our implementation includes explicit citation tracking capabilities to improve answer transparency and traceability
-3. **Additional Agent-4 (Claim Judge)**: RAGent introduces a fourth agent that performs claim-by-claim analysis to identify gaps in knowledge and generate targeted follow-up questions
-4. **Follow-up Processing**: RAGent can retrieve additional information for unanswered aspects of questions through a novel follow-up question generation system
+3. **Additional Agent-4 (Claim Judge)**: RAGentA introduces a fourth agent that performs claim-by-claim analysis to identify gaps in knowledge and generate targeted follow-up questions
+4. **Follow-up Processing**: RAGentA can retrieve additional information for unanswered aspects of questions through a novel follow-up question generation system
 
-Please cite both the original MAIN-RAG paper and RAGent in any work that uses this code:
+Please cite both the original MAIN-RAG paper and RAGentA in any work that uses this code:
 ```
 @article{chang2025mainrag,
   title={MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation},
@@ -250,9 +250,9 @@ Please cite both the original MAIN-RAG paper and RAGent in any work that uses th
   year={2025}
 }
 
-@software{RAGent2025,
+@software{RAGentA2025,
   author = {Schreieder, Tobias and Besrour, Ines and He, Jingbo},
-  title = {RAGent: Retrieval-Augmented Generation Agent Framwork},
+  title = {RAGentA: Retrieval-Augmented Generation Agent Framwork},
   year = {2025},
   publisher = {GitHub},
   url = {[git@github.com:tobiasschreieder/LiveRAG.git](https://github.com/tobiasschreieder/LiveRAG.git)}
