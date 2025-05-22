@@ -13,7 +13,7 @@ import string
 def get_unique_log_filename():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     random_str = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"logs/ragent_runner_{timestamp}_{random_str}.log"
+    return f"logs/ragenta_runner_{timestamp}_{random_str}.log"
 
 
 # Create logs directory
@@ -25,10 +25,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler(get_unique_log_filename()), logging.StreamHandler()],
 )
-logger = logging.getLogger("RAGENT_Runner")
+logger = logging.getLogger("RAGENTA_Runner")
 
 # Import our components
-from LiveRAG.RAGentA import RAGENT
+from RAGentA import RAGENTA
 from hybrid_retriever import HybridRetriever
 
 
@@ -188,7 +188,7 @@ def write_result_to_json(result, output_file):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Enhanced RAGent with Hybrid Retrieval"
+        description="Enhanced RAGentA with Hybrid Retrieval"
     )
     parser.add_argument(
         "--model",
@@ -232,9 +232,9 @@ def main():
     logger.info(f"Initializing hybrid retriever with alpha={args.alpha}...")
     retriever = HybridRetriever(alpha=args.alpha, top_k=args.top_k)
 
-    # Initialize RAGent
-    logger.info(f"Initializing enhanced RAGent with n={args.n}...")
-    ragent = RAGENT(retriever, agent_model=args.model, n=args.n)
+    # Initialize RAGentA
+    logger.info(f"Initializing enhanced RAGentA with n={args.n}...")
+    ragenta = RAGENTA(retriever, agent_model=args.model, n=args.n)
 
     # Create output directories
     os.makedirs(args.output_dir, exist_ok=True)
@@ -250,7 +250,7 @@ def main():
 
         try:
             # Process the query
-            answer, debug_info = ragent.answer_query(args.single_question)
+            answer, debug_info = ragenta.answer_query(args.single_question)
 
             # Calculate processing time
             process_time = time.time() - start_time
@@ -313,7 +313,7 @@ def main():
 
         try:
             # Process the query
-            answer, debug_info = ragent.answer_query(item["question"])
+            answer, debug_info = ragenta.answer_query(item["question"])
 
             # Calculate processing time
             process_time = time.time() - start_time
