@@ -65,16 +65,16 @@ export HUGGING_FACE_HUB_TOKEN=your_hf_token  # If needed for accessing models
 RAGentA can be run on a single question or a batch of questions from a JSON/JSONL file.
 ### Process a Single Question
 ```bash
-python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --single_question "Your question here?"
+python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.65 --top_k 20 --single_question "Your question here?"
 ```
 ### Process Questions from a Dataset
 ```bash
-python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.7 --top_k 20 --data_file your_questions.jsonl --output_format jsonl
+python run_RAGentA.py --model tiiuae/Falcon3-10B-Instruct --n 0.5 --alpha 0.65 --top_k 20 --data_file your_questions.jsonl --output_format jsonl
 ```
 ### Parameters
 - `--model`: Model name or path (default: "tiiuae/falcon-3-10b-instruct")
 - `--n`: Adjustment factor for adaptive judge bar (default: 0.5)
-- `--alpha`: Weight for semantic search vs. keyword search (0-1, default: 0.7)
+- `--alpha`: Weight for semantic search vs. keyword search (0-1, default: 0.65)
 - `--top_k`: Number of documents to retrieve (default: 20)
 - `--data_file`: File containing questions in JSON or JSONL format
 - `--single_question`: Process a single question instead of a dataset
