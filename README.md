@@ -251,7 +251,7 @@ Please cite both the original MAIN-RAG paper and RAGentA in any work that uses t
 }
 
 @software{RAGentA2025,
-  author = {Schreieder, Tobias and Besrour, Ines and He, Jingbo},
+  author = {Besrour, Ines and He, Jingbo and Schreieder, Tobias and Färber, Michael},
   title = {RAGentA: Multi-Agent Retrieval-Augmented Generation for Attributed Question Answering},
   year = {2025},
   publisher = {GitHub},
